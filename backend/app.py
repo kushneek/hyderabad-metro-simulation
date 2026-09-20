@@ -25,12 +25,13 @@ import pymysql
 import pymysql.cursors
 
 DB = dict(
-    host=os.environ.get("MYSQL_HOST", "localhost"),
+    host=os.environ["MYSQL_HOST"],
     database=os.environ.get("MYSQL_DATABASE", "hmrl_metro"),
-    user=os.environ.get("MYSQL_USER", "metro_user"),
-    password=os.environ.get("MYSQL_PASSWORD", "Kushagra@8221"),
+    user=os.environ["MYSQL_USER"],
+    password=os.environ["MYSQL_PASSWORD"],
     port=int(os.environ.get("MYSQL_PORT", 3306)),
     charset="utf8mb4",
+    ssl={"ca": os.environ["MYSQL_SSL_CA"]},
 )
 
 IST_OFFSET = timedelta(hours=5, minutes=30)
