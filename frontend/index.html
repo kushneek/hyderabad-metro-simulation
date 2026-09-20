@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Hyderabad Metro – Timetable-Based Train Simulation</title>
+<link rel="stylesheet" href="leaflet.css">
+<style>
+  :root { --accent:#ffb703; --panel:#121a2b; --text:#e6ecf5; --muted:#8ea0bd; --border:#26324a; }
+  * { box-sizing: border-box; }
+  html,body{ height:100%; margin:0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; color:var(--text); }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header { padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; z-index:1000; position:relative; }
+  header h1 { font-size:15px; margin:0 0 4px 0; }
+  .sim-badge { display:inline-block; background:var(--accent); color:#22190a; font-weight:700; font-size:11px;
+    padding:3px 8px; border-radius:4px; letter-spacing:.4px; margin-right:8px; }
+  .subtitle { font-size:11.5px; color:var(--muted); margin-top:4px; }
+  #main { flex:1; display:flex; min-height:0; }
+  #map { flex:1; }
+  #sidebar { width:300px; max-width:40vw; background:var(--panel); border-left:1px solid var(--border); overflow-y:auto; flex-shrink:0; z-index:1000; }
+  .panel-section { padding:12px 14px; border-bottom:1px solid var(--border); }
+  .panel-section h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:0 0 8px 0; }
+  input[type="text"], input[type="url"] {
+    width:100%; padding:7px 8px; border-radius:6px; border:1px solid var(--border); background:#182236; color:var(--text); font-size:13px;
+  }
+  .status-line { font-size:12.5px; color:var(--muted); line-height:1.7; }
+  .status-line b { color: var(--text); }
+  .badge-sim { background:var(--accent); color:#22190a; font-weight:700; font-size:10px; padding:1px 5px; border-radius:3px; }
+  .leaflet-popup-content { font-size:12.5px; }
+  .leaflet-popup-content .row { margin:3px 0; }
+  .leaflet-popup-content .label { color:#5a6b85; }
+  .train-icon { transition: none; }
+  .station-label-tooltip { background:rgba(18,26,43,0.85); color:#e6ecf5; border:none; box-shadow:none;
+    font-size:11px; padding:1px 5px; font-weight:600; }
+  .station-label-tooltip::before { display:none; }
+  .err-banner { background:#3a1414; color:#ffb4b4; border:1px solid #7a2b2b; padding:8px 10px; border-radius:6px; font-size:12px; }
+  @media (max-width: 720px) {
+    #main { flex-direction: column; }
+    #sidebar { width:100%; max-width:100%; max-height:40vh; border-left:none; border-top:1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><span class="sim-badge">SIMULATED TRAIN MOVEMENT</span>Hyderabad Metro – Timetable-Based Train Simulation</h1>
+    <div class="subtitle">Live positions come from the backend simulation API, calculated from the HMRL GTFS schedule — not GPS or operational tracking.</div>
+  </header>
+  <div id="main">
+    <div id="map"></div>
+    <div id="sidebar">
+      <div class="panel-section">
+        <h3>Backend API</h3>
+        <input type="url" id="apiBase" value="http://localhost:8000">
+        <div id="connStatus" style="font-size:11.5px; margin-top:6px;"></div>
+      </div>
+      <div class="panel-section">
+        <h3>Status</h3>
+        <div class="status-line" id="statusInfo">Connecting…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="leaflet.js"></script>
+<script>
+(function(){
+  const map = L.map('map', { zoomControl: true }).setView([17.42, 78.45], 12);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+    referrerPolicy: 'strict-origin-when-cross-origin'
+  }).addTo(map);
+  const routeColorFallback = { RED:'#e31e24', BLUE:'#007abb', GREEN:'#009846' };
+  let trainMarkers = {};
+  let routesLoaded = {};
+
+  const apiInput = document.getElementById('apiBase');
+  const connStatus = document.getElementById('connStatus');
+  const statusInfo = document.getElementById('statusInfo');
+
+  function apiBase(){ return apiInput.value.replace(/\/$/, ''); }
+
+  function makeTrainIcon(color, bearing){
+    const rot = bearing==null ? 0 : bearing;
+    const svg = `
+      <svg width="24" height="24" viewBox="-12 -12 24 24" style="transform: rotate(${rot}deg); overflow:visible;">
+        <path d="M -4,-6 L 0,-11 L 4,-6 Z" fill="${color}" stroke="#fff" stroke-width="0.8"/>
+        <rect x="-4.5" y="-6" width="9" height="13" rx="3" fill="${color}" stroke="#fff" stroke-width="1"/>
+        <rect x="-2.7" y="-3.5" width="5.4" height="3.2" rx="0.6" fill="#fff" opacity="0.9"/>
+        <rect x="-2.7" y="1.2" width="5.4" height="3.2" rx="0.6" fill="#fff" opacity="0.55"/>
+      </svg>`;
+    return L.divIcon({ className: 'train-icon', html: svg, iconSize:[24,24], iconAnchor:[12,12] });
+  }
+
+  function popupHTML(v){
+    return `
+      <div class="row"><b>${v.route_id} line</b></div>
+      <div class="row"><span class="label">Trip:</span> ${v.trip_id} <span class="badge-sim">SIMULATED</span></div>
+      <div class="row"><span class="label">Heading:</span> ${v.headsign}</div>
+      <div class="row"><span class="label">Status:</span> ${v.state}</div>
+      <div class="row"><span class="label">Current section near:</span> ${v.current_stop_name||'—'}</div>
+      <div class="row"><span class="label">Next station:</span> ${v.next_stop_name||'—'}</div>
+      <div class="row"><span class="label">Scheduled ETA:</span> ${v.scheduled_eta_next!=null ? fmtClock(v.scheduled_eta_next) : '—'} (not live)</div>
+    `;
+  }
+  function fmtClock(sec){
+    sec = Math.floor(sec) % 86400; if(sec<0) sec+=86400;
+    const h=String(Math.floor(sec/3600)).padStart(2,'0');
+    const m=String(Math.floor((sec%3600)/60)).padStart(2,'0');
+    const s=String(Math.floor(sec%60)).padStart(2,'0');
+    return `${h}:${m}:${s}`;
+  }
+  let simulationDate = "2026-09-21";
+  let simulationSeconds = 8 * 3600 + 30 * 60; // 08:30:00
+  async function poll(){
+
+    try {
+
+        // Convert simulation seconds to HH:MM:SS
+        const time = fmtClock(simulationSeconds);
+
+        const res = await fetch(
+            `${apiBase()}/api/metro/simulation/vehicles?date=${simulationDate}&time=${time}`
+        );
+
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        connStatus.innerHTML = '🟢 Connected';
+
+        renderVehicles(data.vehicles);
+
+        statusInfo.innerHTML =
+            `Simulation date: <b>${data.simulation_date}</b><br>` +
+            `Simulation time: <b>${time} IST</b><br>` +
+            `Active service(s): <b>${data.active_service_ids.join(', ') || 'none'}</b><br>` +
+            `Active trains: <b>${data.vehicle_count}</b><br><br>` +
+            `<i>${data.disclaimer}</i>`;
+
+    } catch (e) {
+
+        console.error(e);
+
+        connStatus.innerHTML = '🔴 Cannot reach API';
+
+        statusInfo.innerHTML =
+            `<div class="err-banner">
+                ${e.message}
+            </div>`;
+    }
+  }
+
+  function renderVehicles(vehicles){
+    const seen = new Set();
+    vehicles.forEach(v => {
+      seen.add(v.trip_id);
+      const color = routeColorFallback[v.route_id] || '#999';
+      const icon = makeTrainIcon(color, v.bearing);
+      let m = trainMarkers[v.trip_id];
+      if (!m) {
+        m = L.marker([v.lat, v.lon], { icon }).addTo(map);
+        m.on('click', () => m.bindPopup(popupHTML(v)).openPopup());
+        trainMarkers[v.trip_id] = m;
+      } else {
+          m.setLatLng([v.lat, v.lon]);
+          m.setIcon(icon);
+
+          if (m.isPopupOpen()) {
+          m.setPopupContent(popupHTML(v));
+          }
+      }
+    });
+    Object.keys(trainMarkers).forEach(tid => {
+      if (!seen.has(tid)) { map.removeLayer(trainMarkers[tid]); delete trainMarkers[tid]; }
+    });
+  }
+
+  poll();
+
+  setInterval(() => {
+
+    // Advance simulation by 10 simulated seconds
+    simulationSeconds += 10;
+
+    poll();
+
+  }, 1000);
+  })();
+
+</script>
+</body>
+</html>
