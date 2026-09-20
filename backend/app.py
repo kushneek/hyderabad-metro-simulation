@@ -24,6 +24,16 @@ from fastapi.middleware.cors import CORSMiddleware
 import pymysql
 import pymysql.cursors
 
+ca_content = os.environ.get("MYSQL_SSL_CA_CONTENT")
+
+if ca_content:
+    ca_path = "/tmp/aiven-ca.pem"
+    with open(ca_path, "w", encoding="utf-8") as f:
+        f.write(ca_content)
+else:
+    ca_path = os.environ["MYSQL_SSL_CA"]
+
+
 DB = dict(
     host=os.environ["MYSQL_HOST"],
     database=os.environ.get("MYSQL_DATABASE", "hmrl_metro"),
@@ -31,7 +41,7 @@ DB = dict(
     password=os.environ["MYSQL_PASSWORD"],
     port=int(os.environ.get("MYSQL_PORT", 3306)),
     charset="utf8mb4",
-    ssl={"ca": os.environ["MYSQL_SSL_CA"]},
+    ssl={"ca": ca_path},
 )
 
 IST_OFFSET = timedelta(hours=5, minutes=30)
