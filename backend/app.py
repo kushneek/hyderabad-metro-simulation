@@ -24,24 +24,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import pymysql
 import pymysql.cursors
 
-ca_content = os.environ.get("MYSQL_SSL_CA_CONTENT")
-
-if ca_content:
-    ca_path = "/tmp/aiven-ca.pem"
-    with open(ca_path, "w", encoding="utf-8") as f:
-        f.write(ca_content)
-else:
-    ca_path = os.environ["MYSQL_SSL_CA"]
-
-
 DB = dict(
-    host=os.environ["MYSQL_HOST"],
+    host=os.environ.get("MYSQL_HOST", "localhost"),
     database=os.environ.get("MYSQL_DATABASE", "hmrl_metro"),
-    user=os.environ["MYSQL_USER"],
-    password=os.environ["MYSQL_PASSWORD"],
+    user=os.environ.get("MYSQL_USER", "root"),
+    password=os.environ.get("MYSQL_PASSWORD", ""),
     port=int(os.environ.get("MYSQL_PORT", 3306)),
     charset="utf8mb4",
-    ssl={"ca": ca_path},
 )
 
 IST_OFFSET = timedelta(hours=5, minutes=30)
@@ -52,7 +41,16 @@ app.add_middleware(
 )
 
 # ---------------- In-memory state, loaded once at startup (section 16) ----------------
-STATE = {"routes": {}, "calendar": {}, "shapes": {}, "stops": {}, "trips": {}, "stop_times": {}}
+STATE = {
+    "routes": {},
+    "calendar": {},
+    "shapes": {},
+    "stops": {},
+    "trips": {},
+    "stop_times": {},
+    "stations": {},
+    "route_shapes": {},
+}
 
 
 def load_state():
@@ -62,10 +60,10 @@ def load_state():
     cur.execute("SELECT route_id, route_short_name, route_long_name, route_color FROM metro_routes")
     STATE["routes"] = {r[0]: {"short_name": r[1], "long_name": r[2], "color": "#" + r[3]} for r in cur.fetchall()}
 
-    cur.execute("SELECT service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday FROM metro_calendar")
+    cur.execute("SELECT service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date from metro_calendar")
     STATE["calendar"] = {
         r[0]: {"mon": bool(r[1]), "tue": bool(r[2]), "wed": bool(r[3]), "thu": bool(r[4]),
-               "fri": bool(r[5]), "sat": bool(r[6]), "sun": bool(r[7])}
+               "fri": bool(r[5]), "sat": bool(r[6]), "sun": bool(r[7]), "start_date": str(r[8]), "end_date": str(r[9]),}
         for r in cur.fetchall()
     }
 
@@ -96,9 +94,100 @@ def load_state():
         stop_times.setdefault(tid, []).append((seq, stop_id, arr, dep, float(dist) if dist is not None else None))
     STATE["stop_times"] = stop_times
 
+    # ============================================================
+    # BUILD STATION-LEVEL DATA
+    # ============================================================
+
+    station_groups = {}
+
+    for trip_id, rows in STATE["stop_times"].items():
+
+        route_id = STATE["trips"][trip_id]["route"]
+
+        for _, stop_id, _, _, _ in rows:
+
+            stop = STATE["stops"].get(stop_id)
+
+            if not stop:
+                continue
+
+            name = (stop["name"] or "").strip()
+
+            if not name:
+                continue
+
+            # Group platform/stop records having the same station name
+            key = name.casefold()
+
+            group = station_groups.setdefault(
+                key,
+                {
+                    "station_name": name,
+                    "stop_ids": set(),
+                    "routes": set(),
+                    "lons": [],
+                    "lats": [],
+                },
+            )
+
+            group["stop_ids"].add(stop_id)
+            group["routes"].add(route_id)
+            group["lons"].append(stop["lon"])
+            group["lats"].append(stop["lat"])
+
+
+    STATE["stations"] = {
+
+        key: {
+            "station_id": key,
+            "name": group["station_name"],
+            "stop_ids": sorted(group["stop_ids"]),
+            "routes": sorted(group["routes"]),
+            "lon": sum(group["lons"]) / len(group["lons"]),
+            "lat": sum(group["lats"]) / len(group["lats"]),
+            "intersection": len(group["routes"]) > 1,
+        }
+
+        for key, group in station_groups.items()
+
+    }
+
+
+    # ============================================================
+    # ASSOCIATE GTFS SHAPES WITH METRO ROUTES
+    # ============================================================
+
+    route_shapes = {}
+
+    for trip in STATE["trips"].values():
+
+        route_shapes.setdefault(
+            trip["route"],
+            set()
+        ).add(
+            trip["shape"]
+        )
+
+
+    STATE["route_shapes"] = {
+
+        route_id: sorted(shape_ids)
+
+        for route_id, shape_ids in route_shapes.items()
+
+    }
+
+
     cur.close()
     conn.close()
-    print(f"Loaded: {len(STATE['trips'])} trips, {len(STATE['stops'])} stops, {len(STATE['shapes'])} shapes")
+
+    print(
+        f"Loaded: "
+        f"{len(STATE['trips'])} trips, "
+        f"{len(STATE['stops'])} stops, "
+        f"{len(STATE['shapes'])} shapes, "
+        f"{len(STATE['stations'])} stations"
+    )
 
 
 
@@ -122,7 +211,24 @@ def weekday_key(d: date_cls) -> str:
 
 def active_services(d: date_cls):
     wk = weekday_key(d)
-    return {sid for sid, cal in STATE["calendar"].items() if cal[wk]}
+
+    active = set()
+
+    for sid, cal in STATE["calendar"].items():
+        start_date = cal["start_date"]
+        end_date = cal["end_date"]
+
+        # MySQL DATE columns are returned as Python date objects
+        if isinstance(start_date, str):
+            start_date = date_cls.fromisoformat(start_date)
+
+        if isinstance(end_date, str):
+            end_date = date_cls.fromisoformat(end_date)
+
+        if start_date <= d <= end_date and cal[wk]:
+            active.add(sid)
+
+    return active   
 
 
 def interp_along_shape(shape_pts, target_dist):
@@ -294,6 +400,55 @@ def get_departures(
         "departures": results[:limit],
     }
 
+@app.get("/api/metro/map")
+def get_map_data():
+    """
+    Return metro route geometry and station information
+    required by the WebGIS frontend.
+    """
+
+    routes = []
+
+    for route_id, route in STATE["routes"].items():
+
+        shapes = []
+
+        for shape_id in STATE["route_shapes"].get(route_id, []):
+
+            points = STATE["shapes"].get(shape_id, [])
+
+            if not points:
+                continue
+
+            shapes.append(
+                {
+                    "shape_id": shape_id,
+
+                    # Leaflet expects [lat, lon]
+                    "coordinates": [
+                        [lat, lon]
+                        for lon, lat, _ in points
+                    ],
+                }
+            )
+
+        routes.append(
+            {
+                "route_id": route_id,
+                "short_name": route["short_name"],
+                "long_name": route["long_name"],
+                "color": route["color"],
+                "shapes": shapes,
+            }
+        )
+
+    return {
+        "routes": routes,
+        "stations": list(STATE["stations"].values()),
+        "station_count": len(STATE["stations"]),
+    }
+
+
 
 @app.get("/api/metro/routes/{route_id}")
 def get_route(route_id: str):
@@ -306,6 +461,58 @@ def get_route(route_id: str):
 @app.get("/api/metro/routes")
 def list_routes():
     return {"routes": [{"route_id": rid, **r} for rid, r in STATE["routes"].items()]}
+
+@app.get("/api/metro/simulation/week")
+def get_week_schedule(
+    start_date: str = Query(
+        "2026-09-07",
+        description="Monday date in YYYY-MM-DD format"
+    )
+):
+    """
+    Returns the seven-day GTFS service schedule beginning on the
+    supplied Monday.
+    """
+
+    try:
+        monday = datetime.strptime(start_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date must be in YYYY-MM-DD format"
+        )
+
+    if monday.weekday() != 0:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date must be a Monday"
+        )
+
+    week = []
+
+    for offset in range(7):
+        current_date = monday + timedelta(days=offset)
+        services = active_services(current_date)
+
+        # Count scheduled trips for the active services
+        trip_count = sum(
+            1
+            for trip in STATE["trips"].values()
+            if trip["service"] in services
+        )
+
+        week.append({
+            "date": current_date.isoformat(),
+            "day": current_date.strftime("%A"),
+            "service_ids": sorted(services),
+            "scheduled_trip_count": trip_count
+        })
+
+    return {
+        "week_start": monday.isoformat(),
+        "week_end": (monday + timedelta(days=6)).isoformat(),
+        "schedule": week
+    }
 
 
 @app.get("/health")

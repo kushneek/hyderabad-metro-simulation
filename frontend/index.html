@@ -2,194 +2,1736 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Hyderabad Metro – Timetable-Based Train Simulation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hyderabad Metro Simulation — Bhuvan WebGIS</title>
+
 <link rel="stylesheet" href="leaflet.css">
+
 <style>
-  :root { --accent:#ffb703; --panel:#121a2b; --text:#e6ecf5; --muted:#8ea0bd; --border:#26324a; }
-  * { box-sizing: border-box; }
-  html,body{ height:100%; margin:0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; color:var(--text); }
-  #app { display:flex; flex-direction:column; height:100%; }
-  header { padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; z-index:1000; position:relative; }
-  header h1 { font-size:15px; margin:0 0 4px 0; }
-  .sim-badge { display:inline-block; background:var(--accent); color:#22190a; font-weight:700; font-size:11px;
-    padding:3px 8px; border-radius:4px; letter-spacing:.4px; margin-right:8px; }
-  .subtitle { font-size:11.5px; color:var(--muted); margin-top:4px; }
-  #main { flex:1; display:flex; min-height:0; }
-  #map { flex:1; }
-  #sidebar { width:300px; max-width:40vw; background:var(--panel); border-left:1px solid var(--border); overflow-y:auto; flex-shrink:0; z-index:1000; }
-  .panel-section { padding:12px 14px; border-bottom:1px solid var(--border); }
-  .panel-section h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:0 0 8px 0; }
-  input[type="text"], input[type="url"] {
-    width:100%; padding:7px 8px; border-radius:6px; border:1px solid var(--border); background:#182236; color:var(--text); font-size:13px;
+:root{
+  --bg:#f4f6f8;
+  --panel:#ffffff;
+  --text:#18212b;
+  --muted:#66717d;
+  --border:#dfe4e8;
+  --shadow:0 8px 28px rgba(20,30,40,.10);
+  --accent:#1769aa;
+}
+body.dark{
+  --bg:#101419;
+  --panel:#171d23;
+  --text:#eef3f7;
+  --muted:#aeb8c2;
+  --border:#303841;
+  --shadow:0 8px 28px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit}
+
+#app{height:100vh;display:flex;flex-direction:column}
+
+header{
+  height:70px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 18px;
+  z-index:1000;
+}
+
+.title-wrap h1{
+  margin:0;
+  font-size:18px;
+  font-weight:700;
+}
+.subtitle{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+}
+.sim-badge{
+  display:inline-block;
+  margin-right:8px;
+  padding:4px 7px;
+  border-radius:5px;
+  background:#fff3cd;
+  color:#7a5a00;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.5px;
+}
+
+.header-actions{display:flex;gap:8px;align-items:center}
+.icon-btn,.base-btn{
+  border:1px solid var(--border);
+  background:var(--panel);
+  color:var(--text);
+  border-radius:7px;
+  padding:7px 10px;
+  cursor:pointer;
+}
+.icon-btn:hover,.base-btn:hover{background:var(--bg)}
+
+#workspace{
+  flex:1;
+  min-height:0;
+  display:flex;
+  position:relative;
+}
+
+#map{flex:1;min-width:0}
+
+#sidebar{
+  width:330px;
+  background:var(--panel);
+  border-left:1px solid var(--border);
+  overflow:auto;
+  z-index:900;
+}
+
+.section{
+  padding:13px 15px;
+  border-bottom:1px solid var(--border);
+}
+.section h3{
+  margin:0 0 9px;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.65px;
+  color:var(--muted);
+}
+
+.transport{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+}
+.transport button{
+  padding:9px 4px;
+  border:1px solid var(--border);
+  border-radius:7px;
+  background:var(--panel);
+  color:var(--text);
+  cursor:pointer;
+  font-weight:600;
+}
+.transport button.active{
+  border-color:#1769aa;
+  background:#1769aa;
+  color:white;
+}
+.transport button:disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.field label{
+  display:block;
+  font-size:10px;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+.field input{
+  width:100%;
+  padding:8px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:var(--panel);
+  color:var(--text);
+}
+
+.controls{display:flex;gap:6px;margin-top:8px}
+.controls button{
+  flex:1;
+  padding:8px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:var(--panel);
+  color:var(--text);
+  cursor:pointer;
+}
+.controls button.primary{background:#1769aa;color:white;border-color:#1769aa}
+
+.speed-row{display:flex;gap:5px;margin-top:8px}
+.speed{
+  flex:1;
+  padding:6px 2px;
+  border:1px solid var(--border);
+  border-radius:5px;
+  background:var(--panel);
+  color:var(--text);
+  cursor:pointer;
+  font-size:11px;
+}
+.speed.active{background:#263238;color:white;border-color:#263238}
+
+.route-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:7px 0;
+  font-size:12px;
+}
+.route-row input{accent-color:#1769aa}
+.route-dot{
+  width:11px;height:11px;border-radius:50%;
+  display:inline-block;
+}
+
+.stats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.stat{
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:9px;
+}
+.stat .num{font-size:18px;font-weight:700}
+.stat .label{font-size:10px;color:var(--muted);margin-top:2px}
+
+#timeline{
+  width:100%;
+  accent-color:#1769aa;
+  cursor:pointer;
+}
+.time-readout{
+  display:flex;
+  justify-content:space-between;
+  color:var(--muted);
+  font-size:10px;
+}
+
+.notice{
+  background:#fff8df;
+  border:1px solid #efd47c;
+  color:#695300;
+  border-radius:7px;
+  padding:9px;
+  font-size:10.5px;
+  line-height:1.45;
+}
+
+.status{
+  font-size:11px;
+  line-height:1.55;
+}
+.connected{color:#16833b}
+.error{color:#b42318}
+
+.legend-item{
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;margin:6px 0;
+}
+.line-swatch{width:26px;height:4px;border-radius:3px}
+
+
+  .bhuvan-place-label{
+    background:rgba(255,255,255,.92);
+    border:1px solid rgba(80,80,80,.35);
+    border-radius:4px;
+    box-shadow:0 1px 3px rgba(0,0,0,.28);
+    color:#222;
+    font-size:11px;
+    font-weight:600;
+    line-height:14px;
+    padding:1px 4px;
+    white-space:nowrap;
+    text-shadow:0 0 2px #fff;
   }
-  .status-line { font-size:12.5px; color:var(--muted); line-height:1.7; }
-  .status-line b { color: var(--text); }
-  .badge-sim { background:var(--accent); color:#22190a; font-weight:700; font-size:10px; padding:1px 5px; border-radius:3px; }
-  .leaflet-popup-content { font-size:12.5px; }
-  .leaflet-popup-content .row { margin:3px 0; }
-  .leaflet-popup-content .label { color:#5a6b85; }
-  .train-icon { transition: none; }
-  .station-label-tooltip { background:rgba(18,26,43,0.85); color:#e6ecf5; border:none; box-shadow:none;
-    font-size:11px; padding:1px 5px; font-weight:600; }
-  .station-label-tooltip::before { display:none; }
-  .err-banner { background:#3a1414; color:#ffb4b4; border:1px solid #7a2b2b; padding:8px 10px; border-radius:6px; font-size:12px; }
-  @media (max-width: 720px) {
-    #main { flex-direction: column; }
-    #sidebar { width:100%; max-width:100%; max-height:40vh; border-left:none; border-top:1px solid var(--border); }
-  }
+  .bhuvan-place-label:before{display:none}
+.station-marker{
+  width:16px;
+  height:16px;
+  border-radius:6px;
+  border:1.5px solid #fff;
+  background:#d92d20;
+  box-shadow:0 1px 4px rgba(0,0,0,.30);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.station-marker.intersection{
+  width:20px;
+  height:20px;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#f2f2f2;
+}
+.station-marker.terminal{
+  width:20px;
+  height:20px;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#f2f2f2;
+}
+.station-marker.intersection-terminal{
+  width:21px;
+  height:21px;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#008c58;
+}
+
+.train-marker{
+  width:24px;
+  height:18px;
+  position:relative;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.metro-train-icon{
+  width:24px;
+  height:18px;
+  position:relative;
+  transform-origin:50% 50%;
+}
+.metro-train-body{
+  position:absolute;
+  left:4px;
+  top:3px;
+  width:16px;
+  height:12px;
+  border-radius:4px 4px 3px 3px;
+  background:#ff7a00;
+  border:2px solid #fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+}
+.metro-train-window{
+  position:absolute;
+  left:7px;
+  top:5px;
+  width:10px;
+  height:4px;
+  border-radius:2px;
+  background:#fff;
+}
+.metro-train-wheel{
+  position:absolute;
+  bottom:1px;
+  width:3px;
+  height:3px;
+  border-radius:50%;
+  background:#fff;
+}
+.metro-train-wheel.left{left:8px}
+.metro-train-wheel.right{right:8px}
+.metro-train-arrow{
+  position:absolute;
+  right:-1px;
+  top:4px;
+  width:0;
+  height:0;
+  border-top:5px solid transparent;
+  border-bottom:5px solid transparent;
+  border-left:7px solid #ff7a00;
+  filter:drop-shadow(0 0 0 #fff);
+}
+.metro-train-arrow:after{
+  content:"";
+  position:absolute;
+  left:-8px;
+  top:-1px;
+  width:3px;
+  height:2px;
+  background:#fff;
+}
+.transport-marker{
+  width:30px;
+  height:30px;
+  border-radius:9px;
+  border:2px solid #fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-size:16px;
+  font-weight:800;
+  line-height:1;
+}
+.transport-marker.metro{background:#d92d20}
+.transport-marker.bus{background:#2563eb}
+.transport-marker.railway{background:#374151}
+
+.station-popup h4{margin:0 0 5px;font-size:14px}
+.station-popup .route-tags{margin-bottom:7px}
+.tag{
+  display:inline-block;
+  padding:2px 5px;
+  border-radius:4px;
+  color:white;
+  font-size:9px;
+  font-weight:700;
+  margin-right:3px;
+}
+.popup-note{font-size:10px;color:#777;margin-top:7px}
+.departure{
+  display:flex;
+  justify-content:space-between;
+  padding:4px 0;
+  border-top:1px solid #eee;
+  font-size:11px;
+}
+.departure:first-child{border-top:0}
+
+@media(max-width:850px){
+  #sidebar{width:290px}
+}
+@media(max-width:680px){
+  header{height:auto;min-height:72px;padding:9px 12px}
+  .header-actions{display:none}
+  #workspace{flex-direction:column}
+  #map{height:62vh;flex:none}
+  #sidebar{width:100%;height:38vh;border-left:0;border-top:1px solid var(--border)}
+}
 </style>
 </head>
+
 <body>
 <div id="app">
-  <header>
-    <h1><span class="sim-badge">SIMULATED TRAIN MOVEMENT</span>Hyderabad Metro – Timetable-Based Train Simulation</h1>
-    <div class="subtitle">Live positions come from the backend simulation API, calculated from the HMRL GTFS schedule — not GPS or operational tracking.</div>
-  </header>
-  <div id="main">
-    <div id="map"></div>
-    <div id="sidebar">
-      <div class="panel-section">
-        <h3>Backend API</h3>
-        <input type="url" id="apiBase" value="https://hyderabad-metro-simulation.onrender.com">
-        <div id="connStatus" style="font-size:11.5px; margin-top:6px;"></div>
-      </div>
-      <div class="panel-section">
-        <h3>Status</h3>
-        <div class="status-line" id="statusInfo">Connecting…</div>
-      </div>
+
+<header>
+  <div class="title-wrap">
+    <h1>
+      <span class="sim-badge">SIMULATION MODE</span>
+      Hyderabad Metro WebGIS
+    </h1>
+    <div class="subtitle">
+      Timetable-based train movement • HMRL GTFS • September 2026 • Not live GPS / operational tracking
     </div>
   </div>
+
+  <div class="header-actions">
+    <button class="base-btn" id="osmBtn">OSM</button>
+    <button class="base-btn" id="bhuvanBtn">Bhuvan</button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme">☾</button>
+  </div>
+</header>
+
+<div id="workspace">
+  <div id="map"></div>
+
+  <aside id="sidebar">
+
+    <div class="section">
+      <h3>Transport</h3>
+      <div class="transport">
+        <button class="active" id="metroTransportBtn" data-transport="metro">Metro</button>
+        <button id="busTransportBtn" data-transport="bus">Bus</button>
+        <button id="railTransportBtn" data-transport="railway">Railway</button>
+      </div>
+      <div id="transportStatus" class="popup-note" style="margin-top:8px">
+        Metro stations, routes and simulated trains are shown.
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Simulation time</h3>
+
+      <div class="grid2">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="dateInput" value="2026-09-07">
+        </div>
+        <div class="field">
+          <label>Time</label>
+          <input type="time" id="timeInput" value="08:30:00" step="1">
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="primary" id="playBtn">▶ Play</button>
+        <button id="resetBtn">↺ Reset</button>
+      </div>
+
+      <div class="speed-row">
+        <button class="speed active" data-speed="1">1×</button>
+        <button class="speed" data-speed="2">2×</button>
+        <button class="speed" data-speed="5">5×</button>
+        <button class="speed" data-speed="10">10×</button>
+      </div>
+
+      <div style="margin-top:9px">
+        <input id="timeline" type="range" min="0" max="86400" step="10" value="30600">
+        <div class="time-readout">
+          <span>00:00</span>
+          <b id="timelineLabel">08:30:00</b>
+          <span>24:00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Metro lines</h3>
+
+      <label class="route-row">
+        <input type="checkbox" data-route="RED" checked>
+        <span class="route-dot" style="background:#e31e24"></span>
+        <span>Red Line</span>
+      </label>
+
+      <label class="route-row">
+        <input type="checkbox" data-route="GREEN" checked>
+        <span class="route-dot" style="background:#009846"></span>
+        <span>Green Line</span>
+      </label>
+
+      <label class="route-row">
+        <input type="checkbox" data-route="BLUE" checked>
+        <span class="route-dot" style="background:#007abb"></span>
+        <span>Blue Line</span>
+      </label>
+    </div>
+
+    <div class="section">
+      <h3>Simulation status</h3>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="num" id="trainCount">—</div>
+          <div class="label">Active trains</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="stationCount">—</div>
+          <div class="label">Stations</div>
+        </div>
+      </div>
+
+      <div class="status" style="margin-top:9px">
+        <div id="connStatus">Connecting…</div>
+        <div id="serviceStatus"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Map</h3>
+
+      <div class="legend-item">
+        <span class="line-swatch" style="background:#e31e24"></span> Red Line
+      </div>
+      <div class="legend-item">
+        <span class="line-swatch" style="background:#009846"></span> Green Line
+      </div>
+      <div class="legend-item">
+        <span class="line-swatch" style="background:#007abb"></span> Blue Line
+      </div>
+      <div class="legend-item">
+        <span style="width:10px;height:10px;border:2px solid #27313a;border-radius:50%;background:#fff"></span>
+        Station
+      </div>
+      <div class="legend-item">
+        <span style="width:13px;height:13px;border:3px solid #111;border-radius:50%;background:#fff"></span>
+        Interchange
+      </div>
+      <div class="legend-item">
+        <span style="width:22px;height:22px;background:#ff7a00;border:2px solid #fff;border-radius:7px"></span>
+        Simulated train + direction arrow
+      </div>
+      <div class="legend-item">
+        <span style="width:18px;height:18px;background:#d92d20;border-radius:6px"></span>
+        Metro station
+      </div>
+      <div class="legend-item">
+        <span style="width:18px;height:18px;background:#2563eb;border-radius:6px"></span>
+        Bus stand
+      </div>
+      <div class="legend-item">
+        <span style="width:18px;height:18px;background:#374151;border-radius:6px"></span>
+        Railway station
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="notice">
+        <b>SIMULATION ONLY</b><br>
+        Train positions are calculated by interpolating HMRL GTFS timetable
+        stop times along the published route shapes. They are not live GPS
+        positions and must not be interpreted as operational tracking.
+      </div>
+    </div>
+
+  </aside>
 </div>
+</div>
+
 <script src="leaflet.js"></script>
+
 <script>
-(function(){
-  const map = L.map('map', { zoomControl: true }).setView([17.42, 78.45], 12);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-    referrerPolicy: 'strict-origin-when-cross-origin'
-  }).addTo(map);
-  const routeColorFallback = { RED:'#e31e24', BLUE:'#007abb', GREEN:'#009846' };
-  let trainMarkers = {};
-  let routesLoaded = {};
+(() => {
 
-  const apiInput = document.getElementById('apiBase');
-  const connStatus = document.getElementById('connStatus');
-  const statusInfo = document.getElementById('statusInfo');
+  const API = "http://127.0.0.1:8000";
 
-  function apiBase(){ return apiInput.value.replace(/\/$/, ''); }
+  const ROUTE_COLORS = {
+    RED: "#e31e24",
+    GREEN: "#009846",
+    BLUE: "#007abb"
+  };
 
-  function makeTrainIcon(color, bearing){
-    const rot = bearing==null ? 0 : bearing;
-    const svg = `
-      <svg width="24" height="24" viewBox="-12 -12 24 24" style="transform: rotate(${rot}deg); overflow:visible;">
-        <path d="M -4,-6 L 0,-11 L 4,-6 Z" fill="${color}" stroke="#fff" stroke-width="0.8"/>
-        <rect x="-4.5" y="-6" width="9" height="13" rx="3" fill="${color}" stroke="#fff" stroke-width="1"/>
-        <rect x="-2.7" y="-3.5" width="5.4" height="3.2" rx="0.6" fill="#fff" opacity="0.9"/>
-        <rect x="-2.7" y="1.2" width="5.4" height="3.2" rx="0.6" fill="#fff" opacity="0.55"/>
-      </svg>`;
-    return L.divIcon({ className: 'train-icon', html: svg, iconSize:[24,24], iconAnchor:[12,12] });
-  }
+  const map = L.map("map", {
+    zoomControl: true,
+    preferCanvas: true
+  }).setView([17.42, 78.45], 12);
 
-  function popupHTML(v){
-    return `
-      <div class="row"><b>${v.route_id} line</b></div>
-      <div class="row"><span class="label">Trip:</span> ${v.trip_id} <span class="badge-sim">SIMULATED</span></div>
-      <div class="row"><span class="label">Heading:</span> ${v.headsign}</div>
-      <div class="row"><span class="label">Status:</span> ${v.state}</div>
-      <div class="row"><span class="label">Current section near:</span> ${v.current_stop_name||'—'}</div>
-      <div class="row"><span class="label">Next station:</span> ${v.next_stop_name||'—'}</div>
-      <div class="row"><span class="label">Scheduled ETA:</span> ${v.scheduled_eta_next!=null ? fmtClock(v.scheduled_eta_next) : '—'} (not live)</div>
-    `;
-  }
-  function fmtClock(sec){
-    sec = Math.floor(sec) % 86400; if(sec<0) sec+=86400;
-    const h=String(Math.floor(sec/3600)).padStart(2,'0');
-    const m=String(Math.floor((sec%3600)/60)).padStart(2,'0');
-    const s=String(Math.floor(sec%60)).padStart(2,'0');
-    return `${h}:${m}:${s}`;
-  }
-  let simulationDate = "2026-09-21";
-  let simulationSeconds = 8 * 3600 + 30 * 60; // 08:30:00
-  async function poll(){
+  // Keep application layers in explicit panes above BOTH OSM and Bhuvan.
+  // This prevents a basemap switch/repaint from ever hiding the metro
+  // routes, station symbols, or simulated trains.
+  const metroRoutePane = map.createPane("metroRoutePane");
+  metroRoutePane.style.zIndex = 430;
 
-    try {
+  const metroStationPane = map.createPane("metroStationPane");
+  metroStationPane.style.zIndex = 450;
 
-        // Convert simulation seconds to HH:MM:SS
-        const time = fmtClock(simulationSeconds);
+  const metroTrainPane = map.createPane("metroTrainPane");
+  metroTrainPane.style.zIndex = 470;
 
-        const res = await fetch(
-            `${apiBase()}/api/metro/simulation/vehicles?date=${simulationDate}&time=${time}`
-        );
+  // -----------------------------
+  // Basemaps
+  // -----------------------------
+  //
+  // Bhuvan is ONE basemap made from:
+  //   1) satellite imagery underneath
+  //   2) Bhuvan vector/place base-map above it
+  //
+  // Both layers are switched on/off together. OSM is the only
+  // alternative basemap.
 
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-        }
+  const osm = L.tileLayer(
+    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+      updateWhenIdle: true,
+      keepBuffer: 1
+    }
+  );
 
-        const data = await res.json();
+  // Bhuvan's satellite endpoint is a WMS-C/tiled service.
+  // We build the GetMap request ourselves so the BBOX is always in
+  // EPSG:4326, matching Bhuvan's documented tiled-service interface.
+  const bhuvanSatellite = L.gridLayer({
+    tileSize: 256,
+    maxZoom: 17,
+    updateWhenIdle: true,
+    keepBuffer: 1,
+    attribution: "Bhuvan, ISRO/NRSC"
+  });
 
-        connStatus.innerHTML = '🟢 Connected';
+  bhuvanSatellite.createTile = function(coords, done) {
+    const tile = document.createElement("img");
+    tile.alt = "Bhuvan satellite imagery";
+    tile.width = 256;
+    tile.height = 256;
+    // Do not set crossOrigin here. Bhuvan's tile server does not need
+    // CORS-enabled image requests for Leaflet to display the tile, and
+    // forcing anonymous CORS can make otherwise valid tiles fail.
 
-        renderVehicles(data.vehicles);
+    const z = coords.z;
+    const n = Math.pow(2, z);
+    const west = coords.x / n * 360 - 180;
+    const east = (coords.x + 1) / n * 360 - 180;
+    const north = 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * coords.y / n)));
+    const south = 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * (coords.y + 1) / n)));
 
-        statusInfo.innerHTML =
-            `Simulation date: <b>${data.simulation_date}</b><br>` +
-            `Simulation time: <b>${time} IST</b><br>` +
-            `Active service(s): <b>${data.active_service_ids.join(', ') || 'none'}</b><br>` +
-            `Active trains: <b>${data.vehicle_count}</b><br><br>` +
-            `<i>${data.disclaimer}</i>`;
+    const bbox = [west, south, east, north].map(v => v.toFixed(8)).join(",");
+    const url =
+      "https://bhuvan-ras1.nrsc.gov.in/tilecache/tilecache.py" +
+      "?LAYERS=bhuvan_imagery" +
+      "&SERVICE=WMS" +
+      "&VERSION=1.1.1" +
+      "&REQUEST=GetMap" +
+      "&STYLES=" +
+      "&FORMAT=image/jpeg" +
+      "&SRS=EPSG:4326" +
+      "&BBOX=" + encodeURIComponent(bbox) +
+      "&WIDTH=256&HEIGHT=256";
 
-    } catch (e) {
+    tile.onload = () => done(null, tile);
+    tile.onerror = () => done(new Error("Bhuvan satellite tile failed"), tile);
+    tile.src = url;
+    return tile;
+  };
 
-        console.error(e);
+  const bhuvanPlaceBase = L.tileLayer.wms(
+    "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms/",
+    {
+      layers: "india3",
+      format: "image/png",
+      version: "1.1.1",
+      srs: "EPSG:4326",
+      transparent: true,
+      opacity: 1,
+      attribution: "Bhuvan, ISRO/NRSC",
+      maxZoom: 17,
+      updateWhenIdle: true,
+      keepBuffer: 1
+    }
+  );
 
-        connStatus.innerHTML = '🔴 Cannot reach API';
+  // IMPORTANT:
+  // This is the single "Bhuvan" basemap.
+  // Satellite is underneath; place/vector base is above.
+  const bhuvanBase = L.layerGroup([
+    bhuvanSatellite,
+    bhuvanPlaceBase
+  ]);
 
-        statusInfo.innerHTML =
-            `<div class="err-banner">
-                ${e.message}
-            </div>`;
+  osm.addTo(map);
+
+  // Only two choices are exposed to the user.
+  L.control.layers(
+    {
+      "OpenStreetMap": osm,
+      "Bhuvan": bhuvanBase
+    },
+    null,
+    {
+      collapsed: true,
+      position: "topright"
+    }
+  ).addTo(map);
+
+  document.getElementById("osmBtn").onclick = () => switchBase("osm");
+  document.getElementById("bhuvanBtn").onclick = () => switchBase("bhuvan");
+
+  map.on("zoomend", updateBhuvanPlaceLabels);
+
+  let activeBase = "osm";
+  let bhuvanLoadedOnce = false;
+  document.getElementById("osmBtn").style.fontWeight = "700";
+
+  function switchBase(name) {
+
+    if (name === activeBase) return;
+
+    document.getElementById("osmBtn").style.fontWeight =
+      name === "osm" ? "700" : "400";
+    document.getElementById("bhuvanBtn").style.fontWeight =
+      name === "bhuvan" ? "700" : "400";
+
+    if (name === "bhuvan") {
+
+      map.removeLayer(osm);
+
+      // Bhuvan is deliberately loaded only when requested.
+      // This prevents the initial page load from waiting for
+      // two remote WMS services.
+      bhuvanBase.addTo(map);
+
+      activeBase = "bhuvan";
+      bhuvanLoadedOnce = true;
+
+    } else {
+
+      map.removeLayer(bhuvanBase);
+      osm.addTo(map);
+
+      activeBase = "osm";
+    }
+
+    // Explicit panes keep these above the Bhuvan imagery/place layers.
+    routeLayer.bringToFront();
+    stationLayer.bringToFront();
+    bhuvanPlaceLabelLayer.bringToFront();
+    trainLayer.bringToFront();
+    updateBhuvanPlaceLabels();
+
+    // Bhuvan can trigger a map repaint while its tiles arrive. Re-assert the
+    // metro overlays and refresh the current simulation without resetting
+    // the simulation clock or recreating the train markers.
+    map.invalidateSize(false);
+    if (activeTransport === "metro") {
+      if (mapData) {
+        drawRoutes();
+        drawStations();
+      }
+      updateSimulation(true);
     }
   }
 
-  function renderVehicles(vehicles){
-    const seen = new Set();
-    vehicles.forEach(v => {
-      seen.add(v.trip_id);
-      const color = routeColorFallback[v.route_id] || '#999';
-      const icon = makeTrainIcon(color, v.bearing);
-      let m = trainMarkers[v.trip_id];
-      if (!m) {
-        m = L.marker([v.lat, v.lon], { icon }).addTo(map);
-        m.on('click', () => m.bindPopup(popupHTML(v)).openPopup());
-        trainMarkers[v.trip_id] = m;
-      } else {
-          m.setLatLng([v.lat, v.lon]);
-          m.setIcon(icon);
+  // -----------------------------
+  // Layer groups
+  // -----------------------------
 
-          if (m.isPopupOpen()) {
-          m.setPopupContent(popupHTML(v));
-          }
-      }
-    });
-    Object.keys(trainMarkers).forEach(tid => {
-      if (!seen.has(tid)) { map.removeLayer(trainMarkers[tid]); delete trainMarkers[tid]; }
+  const routeLayer = L.layerGroup().addTo(map);
+  const stationLayer = L.layerGroup().addTo(map);
+  const trainLayer = L.layerGroup().addTo(map);
+  // Bhuvan itself provides settlement/city layers, but the current `india3`
+  // base layer does not render their text labels in this Leaflet setup.
+  // Keep a lightweight name overlay so place/station names remain readable
+  // above the Bhuvan imagery and base vector layer.
+  const bhuvanPlaceLabelLayer = L.layerGroup().addTo(map);
+  const intermodalLayer = L.layerGroup();
+
+  // Major Hyderabad-area railway stations for the Railway view.
+  const HYDERABAD_RAILWAY_STATIONS = [
+    {name:"Secunderabad Junction", lat:17.4334, lon:78.5008, code:"SC"},
+    {name:"Hyderabad Deccan (Nampally)", lat:17.3928, lon:78.4662, code:"HYB"},
+    {name:"Kacheguda", lat:17.3858, lon:78.4986, code:"KCG"},
+    {name:"Begumpet", lat:17.4441, lon:78.4663, code:"BMT"},
+    {name:"Lingampalli", lat:17.4933, lon:78.3156, code:"LPI"},
+    {name:"Hafizpet", lat:17.4836, lon:78.3660, code:"HFZ"},
+    {name:"Sanathnagar", lat:17.4556, lon:78.4427, code:"ST"},
+    {name:"Sitafalmandi", lat:17.4282, lon:78.5116, code:"STPD"},
+    {name:"Moula Ali", lat:17.4550, lon:78.5534, code:"MLY"},
+    {name:"Malkajgiri", lat:17.4496, lon:78.5360, code:"MJF"},
+    {name:"James Street", lat:17.4390, lon:78.4878, code:"JET"},
+    {name:"Khairatabad", lat:17.4110, lon:78.4588, code:"KQD"},
+    {name:"Malakpet", lat:17.3736, lon:78.5010, code:"MCP"},
+    {name:"Dabirpura", lat:17.3698, lon:78.4910, code:"DQR"},
+    {name:"Yakutpura", lat:17.3671, lon:78.4892, code:"YKA"},
+    {name:"Uppuguda", lat:17.3488, lon:78.4787, code:"YKA2"},
+    {name:"Falaknuma", lat:17.3331, lon:78.4745, code:"FM"},
+    {name:"Huppuguda", lat:17.3524, lon:78.4772, code:"HUP"},
+    {name:"Arts College", lat:17.4165, lon:78.5057, code:"ATC"},
+    {name:"Vidyanagar", lat:17.4068, lon:78.5066, code:"VAR"},
+    {name:"Jamai Osmania", lat:17.4026, lon:78.5201, code:"JOO"},
+    {name:"Mettuguda", lat:17.4281, lon:78.5373, code:"MJF2"}
+  ];
+
+  // Major Hyderabad/Greater Hyderabad bus stands.
+  const HYDERABAD_BUS_STANDS = [
+    {name:"Mahatma Gandhi Bus Station (MGBS)", lat:17.3770, lon:78.4800, code:"MGBS"},
+    {name:"Jubilee Bus Station (JBS)", lat:17.4434, lon:78.4982, code:"JBS"},
+    {name:"Uppal Bus Station", lat:17.4012, lon:78.5596, code:"UPP"},
+    {name:"Charminar Bus Station", lat:17.3616, lon:78.4747, code:"CHAR"},
+    {name:"Dilsukhnagar Bus Station", lat:17.3687, lon:78.5245, code:"DSN"},
+    {name:"Koti Bus Station", lat:17.3848, lon:78.4808, code:"KOTI"},
+    {name:"Rathifile Bus Station", lat:17.4420, lon:78.5001, code:"RATHI"},
+    {name:"Afzalgunj Bus Station", lat:17.3715, lon:78.4719, code:"AFZ"},
+    {name:"Ghatkesar Bus Station", lat:17.4502, lon:78.6862, code:"GHT"},
+    {name:"Medchal Bus Station", lat:17.6295, lon:78.4812, code:"MED"},
+    {name:"Sanathnagar Bus Station", lat:17.4560, lon:78.4430, code:"SNT"},
+    {name:"ECIL Bus Station", lat:17.4750, lon:78.5701, code:"ECIL"}
+  ];
+
+  let mapData = null;
+  let trainMarkers = {};
+  let running = false;
+  let speed = 1;
+  let lastSimulationFetch = 0;
+  let simulationFetchInProgress = false;
+
+  let simulationDate = document.getElementById("dateInput").value;
+  let simulationSeconds = timeToSeconds(
+    document.getElementById("timeInput").value
+  );
+  let activeTransport = "metro";
+
+  // -----------------------------
+  // Utilities
+  // -----------------------------
+
+  function timeToSeconds(value) {
+    const p = value.split(":").map(Number);
+    return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0);
+  }
+
+  function secondsToTime(sec) {
+    sec = Math.max(0, Math.min(86399, Math.floor(sec)));
+
+    const h = String(Math.floor(sec / 3600)).padStart(2, "0");
+    const m = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
+    const s = String(sec % 60).padStart(2, "0");
+
+    return `${h}:${m}:${s}`;
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function selectedRoutes() {
+    return new Set(
+      [...document.querySelectorAll("[data-route]:checked")]
+        .map(x => x.dataset.route)
+    );
+  }
+
+  function setTimeControls() {
+    document.getElementById("timeline").value = simulationSeconds;
+    document.getElementById("timelineLabel").textContent =
+      secondsToTime(simulationSeconds);
+
+    document.getElementById("timeInput").value =
+      secondsToTime(simulationSeconds);
+  }
+
+  // -----------------------------
+  // Route geometry
+  // -----------------------------
+
+  function drawRoutes() {
+
+    routeLayer.clearLayers();
+
+    if (!mapData) return;
+
+    const selected = selectedRoutes();
+
+    mapData.routes.forEach(route => {
+
+      if (!selected.has(route.route_id)) return;
+
+      const color =
+        ROUTE_COLORS[route.route_id] ||
+        route.color ||
+        "#555";
+
+      route.shapes.forEach(shape => {
+
+        // Dark casing makes the route readable on both OSM and Bhuvan.
+        L.polyline(shape.coordinates, {
+          color: "#ffffff",
+          weight: 10,
+          opacity: 0.90,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(routeLayer);
+
+        L.polyline(shape.coordinates, {
+          pane: "metroRoutePane",
+          color,
+          weight: 5,
+          opacity: 0.95,
+          lineCap: "round",
+          lineJoin: "round"
+        }).bindTooltip(
+          `${route.short_name || route.route_id} Line`,
+          { sticky: true }
+        ).addTo(routeLayer);
+      });
     });
   }
 
-  poll();
+  // -----------------------------
+  // Stations
+  // -----------------------------
+
+  // Terminal stations and interchange stations are shown with the symbols
+  // from the supplied HMRL legend. A station can be both (for example
+  // JBS Parade Ground and MG Bus Station), so the combined symbol is used.
+  const TERMINAL_STATIONS = new Set([
+    "Miyapur",
+    "L. B. Nagar",
+    "JBS Parade Ground",
+    "Mahatma Gandhi Bus Station",
+    "Nagole",
+    "Raidurg"
+  ]);
+
+  function normalizeStationName(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/[.\-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const TERMINAL_NAMES = new Set(
+    [...TERMINAL_STATIONS].map(normalizeStationName)
+  );
+
+  function isTerminalStation(station) {
+    return TERMINAL_NAMES.has(normalizeStationName(station.name));
+  }
+
+  function metroStationIcon(type) {
+    const isTerminal = type === "terminal";
+    const isInterchange = type === "interchange";
+    const isBoth = type === "both";
+
+    const size = isBoth ? 21 : (isTerminal || isInterchange ? 20 : 16);
+    const cls =
+      isBoth ? "station-marker intersection-terminal" :
+      isInterchange ? "station-marker intersection" :
+      isTerminal ? "station-marker terminal" :
+      "station-marker";
+
+    // Symbols closely follow the uploaded HMRL legend: ring for terminal,
+    // target-style symbol for interchange, green combined symbol for both.
+    let symbol = `
+      <rect x="6" y="6" width="12" height="12" rx="1.5" fill="#fff"/>
+      <path d="M8 17 V8 C8 6.4 9.5 5 12 5 C14.5 5 16 6.4 16 8 V17"
+            fill="none" stroke="#d92d20" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="9" cy="18" r="1.2" fill="#d92d20"/>
+      <circle cx="15" cy="18" r="1.2" fill="#d92d20"/>`;
+
+    if (isTerminal) {
+      symbol = `
+        <circle cx="12" cy="12" r="8" fill="#fff" stroke="#222" stroke-width="2.2"/>
+        <circle cx="12" cy="12" r="3.1" fill="#222"/>`;
+    } else if (isInterchange) {
+      symbol = `
+        <circle cx="12" cy="12" r="8" fill="#fff" stroke="#222" stroke-width="2"/>
+        <circle cx="12" cy="12" r="4.2" fill="none" stroke="#222" stroke-width="1.7"/>
+        <circle cx="12" cy="12" r="1.8" fill="#222"/>`;
+    } else if (isBoth) {
+      symbol = `
+        <circle cx="12" cy="12" r="8" fill="#fff" stroke="#222" stroke-width="2"/>
+        <circle cx="12" cy="12" r="4.5" fill="none" stroke="#008c58" stroke-width="3"/>
+        <circle cx="12" cy="12" r="1.8" fill="#222"/>`;
+    } else {
+      symbol = `
+        <path d="M5.5 17 V8 C5.5 5.7 7.5 4 12 4 C16.5 4 18.5 5.7 18.5 8 V17"
+              fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        <rect x="8" y="8" width="8" height="5" rx="1" fill="#fff"/>
+        <circle cx="8" cy="18" r="1.3" fill="#fff"/>
+        <circle cx="16" cy="18" r="1.3" fill="#fff"/>`;
+    }
+
+    return L.divIcon({
+      className: "",
+      html: `<div class="${cls}" aria-label="Metro station">
+        <svg viewBox="0 0 24 24" width="${size - 6}" height="${size - 6}" aria-hidden="true">${symbol}</svg>
+      </div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+  }
+
+  function updateBhuvanPlaceLabels() {
+    bhuvanPlaceLabelLayer.clearLayers();
+
+    // The labels are intentionally only shown on the Bhuvan basemap.
+    if (activeBase !== "bhuvan" || !mapData) return;
+
+    const zoom = map.getZoom();
+    const selected = selectedRoutes();
+
+    mapData.stations.forEach(station => {
+      if (!station.routes.some(r => selected.has(r))) return;
+
+      // Keep the city view clean; reveal all station/place names when the
+      // user zooms in. Terminals/interchanges stay visible at wider views.
+      const important = isTerminalStation(station) || station.routes.length > 1;
+      if (zoom < 11 && !important) return;
+
+      L.marker([station.lat, station.lon], {
+        interactive:false,
+        keyboard:false,
+        icon:L.divIcon({
+          className:"",
+          html:`<div class="bhuvan-place-label">${escapeHtml(station.name)}</div>`,
+          iconSize:null,
+          iconAnchor:[0, -10]
+        }),
+        zIndexOffset:900
+      }).addTo(bhuvanPlaceLabelLayer);
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+  function drawStations() {
+
+    stationLayer.clearLayers();
+
+    if (!mapData) return;
+
+    const selected = selectedRoutes();
+
+    mapData.stations.forEach(station => {
+
+      const stationRoutes =
+        station.routes.filter(r => selected.has(r));
+
+      if (!stationRoutes.length) return;
+
+      const isIntersection = stationRoutes.length > 1;
+      const isTerminal = isTerminalStation(station);
+      const stationType =
+        isIntersection && isTerminal ? "both" :
+        isIntersection ? "interchange" :
+        isTerminal ? "terminal" :
+        "normal";
+
+      const marker = L.marker(
+        [station.lat, station.lon],
+        {
+          icon: metroStationIcon(stationType),
+          zIndexOffset: stationType === "both" ? 700 :
+                        stationType === "interchange" ? 600 :
+                        stationType === "terminal" ? 500 : 100
+        }
+      ).addTo(stationLayer);
+
+      marker.on("click", async () => {
+        marker.bindPopup(
+          stationPopupLoading(station)
+        ).openPopup();
+
+        const html = await buildStationPopup(station);
+        marker.setPopupContent(html);
+      });
+    });
+
+    document.getElementById("stationCount").textContent =
+      mapData.stations.filter(
+        s => s.routes.some(r => selected.has(r))
+      ).length;
+
+    updateBhuvanPlaceLabels();
+  }
+
+  function stationPopupLoading(station) {
+    const tags = station.routes.map(
+      route =>
+        `<span class="tag" style="background:${ROUTE_COLORS[route] || "#555"}">${escapeHTML(route)}</span>`
+    ).join("");
+
+    return `
+      <div class="station-popup">
+        <h4>${escapeHTML(station.name)}</h4>
+        <div class="route-tags">${tags}</div>
+        ${station.intersection ? "<b>INTERCHANGE / INTERSECTION</b>" : ""}
+        <div style="margin-top:8px">Loading next scheduled trains…</div>
+      </div>
+    `;
+  }
+
+  async function buildStationPopup(station) {
+
+    const departureLists = await Promise.all(
+      station.stop_ids.map(async stopId => {
+
+        try {
+          const url =
+            `${API}/api/metro/simulation/stations/` +
+            `${encodeURIComponent(stopId)}/departures` +
+            `?date=${encodeURIComponent(simulationDate)}` +
+            `&time=${encodeURIComponent(secondsToTime(simulationSeconds))}` +
+            `&limit=5`;
+
+          const response = await fetch(url);
+
+          if (!response.ok) return [];
+
+          const data = await response.json();
+
+          return (data.departures || []).map(d => ({
+            ...d,
+            stop_id: stopId
+          }));
+
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    const departures = departureLists
+      .flat()
+      .sort(
+        (a,b) =>
+          a.scheduled_departure_seconds -
+          b.scheduled_departure_seconds
+      )
+      .slice(0, 6);
+
+    const tags = station.routes.map(
+      route =>
+        `<span class="tag" style="background:${ROUTE_COLORS[route] || "#555"}">${escapeHTML(route)}</span>`
+    ).join("");
+
+    let departureHTML = "";
+
+    if (!departures.length) {
+
+      departureHTML =
+        `<div style="margin-top:8px">No further scheduled departures in this simulation window.</div>`;
+
+    } else {
+
+      departureHTML = departures.map(d => {
+
+        const delta =
+          d.scheduled_departure_seconds - simulationSeconds;
+
+        const mins = Math.max(0, Math.floor(delta / 60));
+
+        return `
+          <div class="departure">
+            <span>
+              <b>${secondsToTime(d.scheduled_departure_seconds)}</b>
+              · ${escapeHTML(d.route_id)}
+            </span>
+            <span>${mins === 0 ? "due" : mins + " min"}</span>
+          </div>
+        `;
+
+      }).join("");
+    }
+
+    return `
+      <div class="station-popup">
+        <h4>${escapeHTML(station.name)}</h4>
+
+        <div class="route-tags">${tags}</div>
+
+        ${
+          station.intersection
+            ? `<div><b>INTERCHANGE / INTERSECTION</b></div>`
+            : ""
+        }
+
+        <div style="margin-top:8px;font-weight:700">
+          Next scheduled trains
+        </div>
+
+        ${departureHTML}
+
+        <div class="popup-note">
+          Times are timetable-based and simulated, not live arrivals.
+        </div>
+      </div>
+    `;
+  }
+
+  // -----------------------------
+  // Train markers
+  // -----------------------------
+
+  const METRO_TRAIN_COLOR = "#ff7a00";
+
+  function normalizeBearing(bearing) {
+    const n = Number(bearing);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function trainIcon(bearing) {
+    const angle = normalizeBearing(bearing);
+
+    return L.divIcon({
+      className: "",
+      html: `
+        <div class="train-marker">
+          <div class="metro-train-icon" style="transform:rotate(${angle}deg)">
+            <div class="metro-train-body"></div>
+            <div class="metro-train-window"></div>
+            <div class="metro-train-wheel left"></div>
+            <div class="metro-train-wheel right"></div>
+            <div class="metro-train-arrow"></div>
+          </div>
+        </div>`,
+      iconSize: [42,30],
+      iconAnchor: [21,15]
+    });
+  }
+
+  function animateTrain(marker, targetLatLng, duration = 1250) {
+    // Keep the animation alive across backend updates. The old version used
+    // a 1400 ms animation while new positions arrived about every 1500 ms,
+    // which created a visible pause between one movement and the next.
+    // We now use a slightly overlapping animation and always start from the
+    // train's CURRENT rendered position, so updates do not cause a jump.
+    if (marker._moveFrame) {
+      cancelAnimationFrame(marker._moveFrame);
+      marker._moveFrame = null;
+    }
+
+    const from = marker.getLatLng();
+    const start = performance.now();
+    const targetLat = Number(targetLatLng[0]);
+    const targetLng = Number(targetLatLng[1]);
+
+    function step(now) {
+      const progress = Math.min(1, (now - start) / duration);
+      // Smoothstep gives zero velocity at neither endpoint and avoids the
+      // noticeable stop/start feeling of the previous ease-in/ease-out.
+      const smooth = progress * progress * (3 - 2 * progress);
+
+      marker.setLatLng([
+        from.lat + (targetLat - from.lat) * smooth,
+        from.lng + (targetLng - from.lng) * smooth
+      ]);
+
+      if (progress < 1) {
+        marker._moveFrame = requestAnimationFrame(step);
+      } else {
+        marker._moveFrame = null;
+      }
+    }
+
+    marker._moveFrame = requestAnimationFrame(step);
+  }
+
+  function trainPopup(v) {
+
+    return `
+      <div class="station-popup">
+        <h4>${escapeHTML(v.route_id)} Line</h4>
+
+        <div>
+          <b>${escapeHTML(v.headsign || "Metro train")}</b>
+          <span class="tag" style="background:#555">SIMULATED</span>
+        </div>
+
+        <div style="margin-top:7px">
+          <b>Status:</b> ${escapeHTML(v.state)}
+        </div>
+
+        <div>
+          <b>Current:</b> ${escapeHTML(v.current_stop_name || "—")}
+        </div>
+
+        <div>
+          <b>Next:</b> ${escapeHTML(v.next_stop_name || "—")}
+        </div>
+
+        <div>
+          <b>Scheduled ETA:</b>
+          ${
+            v.scheduled_eta_next != null
+              ? secondsToTime(v.scheduled_eta_next)
+              : "—"
+          }
+        </div>
+
+        <div class="popup-note">
+          Position calculated from GTFS timetable and route geometry.
+          Not live GPS.
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTrains(vehicles) {
+
+    const selected = selectedRoutes();
+    const seen = new Set();
+
+    vehicles.forEach(v => {
+
+      if (!selected.has(v.route_id)) return;
+
+      seen.add(v.trip_id);
+
+      let marker = trainMarkers[v.trip_id];
+
+      if (!marker) {
+
+        marker = L.marker(
+          [v.lat, v.lon],
+          {
+            pane: "metroTrainPane",
+            icon: trainIcon(v.bearing),
+            zIndexOffset: 1000
+          }
+        ).addTo(trainLayer);
+
+        marker.bindPopup(trainPopup(v));
+
+        trainMarkers[v.trip_id] = marker;
+
+      } else {
+
+        // Move the whole metro icon continuously between backend updates.
+        // The direction arrow is part of the same icon, so it never detaches.
+        animateTrain(marker, [v.lat, v.lon]);
+        marker.setIcon(trainIcon(v.bearing));
+
+        if (marker.isPopupOpen()) {
+          marker.setPopupContent(trainPopup(v));
+        }
+      }
+    });
+
+    Object.keys(trainMarkers).forEach(id => {
+
+      if (!seen.has(id)) {
+        trainLayer.removeLayer(trainMarkers[id]);
+        delete trainMarkers[id];
+      }
+    });
+
+    document.getElementById("trainCount").textContent =
+      vehicles.filter(v => selected.has(v.route_id)).length;
+  }
+
+  // -----------------------------
+  // Bus / Railway reference layers
+  // -----------------------------
+
+  function transportIcon(type) {
+
+    const symbol = type === "bus" ? "▣" : "▰";
+    const label = type === "bus" ? "Bus stand" : "Railway station";
+
+    return L.divIcon({
+      className: "",
+      html:
+        `<div class="transport-marker ${type}" title="${label}">${symbol}</div>`,
+      iconSize: [30,30],
+      iconAnchor: [15,15]
+    });
+  }
+
+  function transportPopup(place, type) {
+
+    const title = type === "bus" ? "Bus stand" : "Railway station";
+
+    return `
+      <div class="station-popup">
+        <h4>${escapeHTML(place.name)}</h4>
+        <div class="tag" style="background:${type === "bus" ? "#2563eb" : "#374151"}">
+          ${title}
+        </div>
+        <div style="margin-top:8px">
+          ${place.code ? `<b>Code:</b> ${escapeHTML(place.code)}` : ""}
+        </div>
+        <div class="popup-note">
+          Reference location shown as a transport layer; this is not live vehicle tracking.
+        </div>
+      </div>
+    `;
+  }
+
+  function drawIntermodal(type) {
+
+    intermodalLayer.clearLayers();
+
+    if (type !== "bus" && type !== "railway") {
+      map.removeLayer(intermodalLayer);
+      return;
+    }
+
+    const places = type === "bus" ? HYDERABAD_BUS_STANDS : HYDERABAD_RAILWAY_STATIONS;
+
+    places.forEach(place => {
+      const marker = L.marker([place.lat, place.lon], {
+        icon: transportIcon(type),
+        zIndexOffset: 1200
+      }).addTo(intermodalLayer);
+
+      marker.bindPopup(transportPopup(place, type));
+      marker.bindTooltip(place.name, {
+        direction: "top",
+        offset: [0, -12],
+        opacity: 0.95
+      });
+    });
+
+    intermodalLayer.addTo(map);
+    intermodalLayer.bringToFront();
+  }
+
+  function clearMetroView() {
+    routeLayer.clearLayers();
+    stationLayer.clearLayers();
+    trainLayer.clearLayers();
+    bhuvanPlaceLabelLayer.clearLayers();
+    trainMarkers = {};
+    document.getElementById("trainCount").textContent = "—";
+  }
+
+  function setTransportMode(type) {
+
+    activeTransport = type;
+
+    document.querySelectorAll("[data-transport]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.transport === type);
+    });
+
+    if (type === "metro") {
+      map.removeLayer(intermodalLayer);
+      if (mapData) {
+        drawRoutes();
+        drawStations();
+      }
+      updateSimulation(true);
+      document.getElementById("transportStatus").textContent =
+        "Metro stations, routes and simulated trains are shown.";
+    } else {
+      clearMetroView();
+      drawIntermodal(type);
+      document.getElementById("transportStatus").textContent =
+        type === "bus"
+          ? "Hyderabad bus stands are highlighted. Metro simulation is hidden."
+          : "Hyderabad railway stations are highlighted. Metro simulation is hidden.";
+    }
+
+    routeLayer.bringToFront();
+    stationLayer.bringToFront();
+    intermodalLayer.bringToFront();
+    trainLayer.bringToFront();
+  }
+
+  // -----------------------------
+  // API loading
+  // -----------------------------
+
+  async function loadMapData() {
+
+    const response =
+      await fetch(`${API}/api/metro/map`);
+
+    if (!response.ok)
+      throw new Error(`Map API returned HTTP ${response.status}`);
+
+    mapData = await response.json();
+
+    drawRoutes();
+    drawStations();
+
+    document.getElementById("stationCount").textContent =
+      mapData.station_count;
+  }
+
+  async function updateSimulation(force = false) {
+
+    if (activeTransport !== "metro") return;
+
+    simulationDate =
+      document.getElementById("dateInput").value;
+
+    const now = Date.now();
+
+    // Prevent overlapping requests and excessive calls while the
+    // simulation clock is running.
+    if (!force && (simulationFetchInProgress || now - lastSimulationFetch < 900)) {
+      return;
+    }
+
+    simulationFetchInProgress = true;
+    lastSimulationFetch = now;
+
+    const time = secondsToTime(simulationSeconds);
+
+    try {
+
+      const response =
+        await fetch(
+          `${API}/api/metro/simulation/vehicles` +
+          `?date=${encodeURIComponent(simulationDate)}` +
+          `&time=${encodeURIComponent(time)}`,
+          { cache: "no-store" }
+        );
+
+      if (!response.ok)
+        throw new Error(`Simulation API returned HTTP ${response.status}`);
+
+      const data = await response.json();
+
+      // Ignore a late Metro response if the user switched to another transport mode.
+      if (activeTransport !== "metro") return;
+
+      renderTrains(data.vehicles || []);
+
+      document.getElementById("connStatus").innerHTML =
+        `<span class="connected">● Connected to local simulation API</span>`;
+
+      document.getElementById("serviceStatus").innerHTML =
+        `Date: <b>${escapeHTML(data.simulation_date)}</b><br>` +
+        `Time: <b>${time} IST</b><br>` +
+        `Service: <b>${escapeHTML((data.active_service_ids || []).join(", ") || "none")}</b>`;
+
+    } catch (error) {
+
+      document.getElementById("connStatus").innerHTML =
+        `<span class="error">● ${escapeHTML(error.message)}</span>`;
+
+      document.getElementById("trainCount").textContent = "—";
+
+    } finally {
+
+      simulationFetchInProgress = false;
+    }
+  }
+
+  // -----------------------------
+  // Controls
+  // -----------------------------
+
+  document.getElementById("dateInput").addEventListener(
+    "change",
+    () => {
+      simulationDate =
+        document.getElementById("dateInput").value;
+
+      updateSimulation(true);
+    }
+  );
+
+  document.getElementById("timeInput").addEventListener(
+    "change",
+    () => {
+      simulationSeconds =
+        timeToSeconds(
+          document.getElementById("timeInput").value
+        );
+
+      setTimeControls();
+      updateSimulation(true);
+    }
+  );
+
+  document.getElementById("timeline").addEventListener(
+    "input",
+    event => {
+
+      simulationSeconds =
+        Number(event.target.value);
+
+      setTimeControls();
+      updateSimulation(true);
+    }
+  );
+
+  document.getElementById("playBtn").addEventListener(
+    "click",
+    () => {
+
+      running = !running;
+
+      document.getElementById("playBtn").textContent =
+        running ? "❚❚ Pause" : "▶ Play";
+    }
+  );
+
+  document.getElementById("resetBtn").addEventListener(
+    "click",
+    () => {
+
+      running = false;
+
+      document.getElementById("playBtn").textContent =
+        "▶ Play";
+
+      simulationSeconds = 0;
+
+      setTimeControls();
+      updateSimulation();
+    }
+  );
+
+  document.querySelectorAll(".speed").forEach(button => {
+
+    button.addEventListener("click", () => {
+
+      speed =
+        Number(button.dataset.speed);
+
+      document.querySelectorAll(".speed")
+        .forEach(x => x.classList.remove("active"));
+
+      button.classList.add("active");
+    });
+  });
+
+  document.querySelectorAll("[data-route]").forEach(
+    checkbox => {
+
+      checkbox.addEventListener(
+        "change",
+        () => {
+
+          if (activeTransport !== "metro") return;
+
+          drawRoutes();
+          drawStations();
+          updateSimulation(true);
+        }
+      );
+    }
+  );
+
+  document.getElementById("themeBtn").addEventListener(
+    "click",
+    () => {
+
+      document.body.classList.toggle("dark");
+
+      document.getElementById("themeBtn").textContent =
+        document.body.classList.contains("dark")
+          ? "☀"
+          : "☾";
+    }
+  );
+
+  // -----------------------------
+  // Simulation clock
+  // -----------------------------
 
   setInterval(() => {
 
-    // Advance simulation by 10 simulated seconds
-    simulationSeconds += 10;
+    if (!running) return;
 
-    poll();
+    simulationSeconds += 10 * speed;
+
+    if (simulationSeconds >= 86400) {
+      simulationSeconds = 86390;
+      running = false;
+      document.getElementById("playBtn").textContent = "▶ Play";
+    }
+
+    setTimeControls();
+
+    // Backend refresh is throttled internally. The frontend animation runs
+    // continuously between these updates.
+    updateSimulation(false);
 
   }, 1000);
+
+  // -----------------------------
+  // Transport controls
+  // -----------------------------
+
+  document.querySelectorAll("[data-transport]").forEach(btn => {
+    btn.addEventListener("click", () => setTransportMode(btn.dataset.transport));
+  });
+
+  // -----------------------------
+  // Initial load
+  // -----------------------------
+
+  (async () => {
+
+    try {
+
+      await Promise.all([
+        loadMapData(),
+        updateSimulation(true)
+      ]);
+
+      setTimeControls();
+
+      // Fit to Hyderabad metro network after geometry loads.
+      const bounds = routeLayer.getBounds();
+
+      if (bounds.isValid()) {
+        map.fitBounds(bounds.pad(0.08));
+      }
+
+    } catch (error) {
+
+      document.getElementById("connStatus").innerHTML =
+        `<span class="error">● ${escapeHTML(error.message)}</span>`;
+    }
+
   })();
 
+})();
 </script>
 </body>
 </html>
