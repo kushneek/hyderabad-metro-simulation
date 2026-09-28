@@ -136,6 +136,7 @@ header{
   color:var(--muted);
   margin-bottom:4px;
 }
+.field input[readonly]{cursor:default;opacity:.85;pointer-events:none}
 .field input{
   width:100%;
   padding:8px;
@@ -230,6 +231,7 @@ header{
   font-size:11px;margin:6px 0;
 }
 .line-swatch{width:26px;height:4px;border-radius:3px}
+.legend-icon{width:30px;flex:none;display:inline-flex;align-items:center;justify-content:center}
 
 
   .bhuvan-place-label{
@@ -400,6 +402,24 @@ header{
   background:rgba(0,0,0,.02);
 }
 
+
+/* ---------- Station popup (matches reference screenshot) ---------- */
+.leaflet-popup-content{margin:14px 16px}
+.station-popup{min-width:290px;font-family:Inter,Segoe UI,Arial,sans-serif;color:#18212b}
+.station-popup-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.station-popup-title h4{margin:0;font-size:19px;font-weight:700}
+.station-popup-logo{height:26px;width:auto}
+.station-badges{margin:6px 0 12px}
+.route-badge{display:inline-block;padding:3px 9px;border-radius:5px;color:#fff;font-size:12px;font-weight:700;margin-right:4px}
+.station-popup-subtitle{font-size:16px;font-weight:700;margin-bottom:4px}
+.station-train{padding:8px 0;border-bottom:1px solid #e5e8eb}
+.station-train-name{display:flex;align-items:baseline;gap:6px;font-size:14px}
+.station-train-due{margin-left:auto;font-size:14px;color:#333}
+.station-train-times{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;font-size:12.5px}
+.station-time strong{margin-right:4px}
+.station-no-trains{padding:10px 0;font-size:13px;color:#666}
+.station-popup-note{font-size:11.5px;color:#777;margin-top:10px}
+
 @media(max-width:850px){
   #sidebar{width:290px}
 }
@@ -423,7 +443,7 @@ header{
       Hyderabad Metro WebGIS
     </h1>
     <div class="subtitle">
-      Timetable-based train movement • HMRL GTFS • September 2026 • Not live GPS / operational tracking
+      Timetable-based train movement • HMRL GTFS weekly timetable • Not live GPS / operational tracking
     </div>
   </div>
 
@@ -457,16 +477,16 @@ header{
       <div class="grid2">
         <div class="field">
           <label>Date</label>
-          <input type="date" id="dateInput" value="2026-09-07">
+          <input type="date" id="dateInput" readonly tabindex="-1">
         </div>
         <div class="field">
           <label>Time</label>
-          <input type="time" id="timeInput" value="08:30:00" step="1">
+          <input type="time" id="timeInput" step="1" readonly tabindex="-1">
         </div>
       </div>
 
-      <div class="auto-sim-note">
-        Simulation starts automatically at the selected time.
+      <div class="auto-sim-note" id="clockNote">
+        Live metro time from the server. Cannot be changed.
       </div>
     </div>
 
@@ -524,30 +544,13 @@ header{
       <div class="legend-item">
         <span class="line-swatch" style="background:#007abb"></span> Blue Line
       </div>
-      <div class="legend-item">
-        <span style="width:10px;height:10px;border:2px solid #27313a;border-radius:50%;background:#fff"></span>
-        Station
-      </div>
-      <div class="legend-item">
-        <span style="width:13px;height:13px;border:3px solid #111;border-radius:50%;background:#fff"></span>
-        Interchange
-      </div>
-      <div class="legend-item">
-        <span style="width:22px;height:22px;background:#1f2937;border:2px solid #fff;border-radius:7px"></span>
-        Simulated train + direction arrow
-      </div>
-      <div class="legend-item">
-        <span style="width:18px;height:18px;background:#1f2937;border-radius:6px"></span>
-        Metro station
-      </div>
-      <div class="legend-item">
-        <span style="width:18px;height:18px;background:#2563eb;border-radius:6px"></span>
-        Bus stand
-      </div>
-      <div class="legend-item">
-        <span style="width:18px;height:18px;background:#374151;border-radius:6px"></span>
-        Railway station
-      </div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-normal"></span> Metro station</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-terminal"></span> Terminal station</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-interchange"></span> Interchange station</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-both"></span> Interchange + terminal</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="train"></span> Simulated train (arrow = direction)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="transport-bus"></span> Bus stand</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="transport-railway"></span> Railway station</div>
     </div>
 
     <div class="section">
@@ -568,7 +571,27 @@ header{
 <script>
 (() => {
 
-  const API = "https://hyderabad-metro-simulation.onrender.com";
+  // Same origin when deployed (this app serves the page). Opening the file
+  // directly from disk still talks to a local server on port 8000.
+  let API = window.API_BASE ?? "";
+
+  // Finds the real API. Deployed: same origin. Local: also tries port 8000, so
+  // it still works if this page is opened from VS Code Live Server, a file://
+  // path, or any other static server (that is what caused "HTTP 404").
+  async function detectApi() {
+    if (window.API_BASE !== undefined) return;
+    const local = ["", "localhost", "127.0.0.1"].includes(location.hostname);
+    const candidates = [];
+    if (location.protocol !== "file:") candidates.push("");
+    if (local) candidates.push("http://127.0.0.1:8000", "http://localhost:8000");
+
+    for (const c of candidates) {
+      try {
+        const r = await fetch(`${c}/health`, { cache: "no-store" });
+        if (r.ok && (await r.json()).status === "ok") { API = c; return; }
+      } catch (e) { /* try next */ }
+    }
+  }
 
   const ROUTE_COLORS = {
     RED: "#e31e24",
@@ -740,10 +763,58 @@ header{
   let lastSimulationFetch = 0;
   let simulationFetchInProgress = false;
 
-  let simulationDate = document.getElementById("dateInput").value;
-  let simulationSeconds = timeToSeconds(
-    document.getElementById("timeInput").value
-  );
+  // Start at the CURRENT date/time of the user's own device (local time).
+  function localNow() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      seconds: d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
+    };
+  }
+
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // The timetable is in the metro's local time, so EVERY visitor must see the
+  // same clock, whatever their device time zone or device clock says. The
+  // server tells us the real time once; after that we only count forward.
+  let clockCorrectionMs = 0;   // server time - device time
+  let tzOffsetSec = null;      // metro time zone offset from UTC
+
+  function metroNow() {
+    if (tzOffsetSec === null) return localNow();   // fallback until first sync
+    const d = new Date(Date.now() + clockCorrectionMs + tzOffsetSec * 1000);
+    return {
+      date: d.toISOString().slice(0, 10),
+      seconds: d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()
+    };
+  }
+
+  async function syncClock() {
+    try {
+      const t0 = Date.now();
+      const r = await fetch(`${API}/api/metro/time`, { cache: "no-store" });
+      const j = await r.json();
+      const t1 = Date.now();
+      clockCorrectionMs = j.epoch_ms + (t1 - t0) / 2 - t1;   // halve the network delay
+      tzOffsetSec = j.utc_offset_seconds;
+      const note = document.getElementById("clockNote");
+      if (note) note.textContent =
+        `Live metro time (${j.timezone}) from the server. Same for every visitor; cannot be changed.`;
+    } catch (e) {
+      console.error("Clock sync failed, using device clock", e);
+    }
+  }
+
+  const _now = metroNow();
+  let simulationDate = _now.date;
+  let simulationSeconds = _now.seconds;
+  document.getElementById("dateInput").value = simulationDate;
+  document.getElementById("timeInput").value = secondsToTime(simulationSeconds);
   let activeTransport = "metro";
 
   // -----------------------------
@@ -784,6 +855,7 @@ header{
   function setTimeControls() {
     document.getElementById("timeInput").value =
       secondsToTime(simulationSeconds);
+    document.getElementById("dateInput").value = simulationDate;
   }
 
   // -----------------------------
@@ -998,6 +1070,8 @@ header{
       ).addTo(stationLayer);
 
       marker.bindPopup(stationPopupLoading(station), {
+        minWidth: 300,
+        maxWidth: 340,
         closeButton: true,
         autoClose: true,
         closeOnClick: true
@@ -1011,16 +1085,21 @@ header{
         marker.setPopupContent(stationPopupLoading(station));
         marker.openPopup();
 
-        const html = await buildStationPopup(station);
-
-        // Only update this marker if it is still on the map.
-        if (marker._map) {
-          marker.setPopupContent(html);
-          if (!marker.isPopupOpen()) {
-            marker.openPopup();
+        const refresh = async () => {
+          const html = await buildStationPopup(station);
+          if (marker._map && marker.isPopupOpen()) {
+            marker.setPopupContent(html);
           }
-        }
+        };
+
+        await refresh();
+
+        // Keep "due / 2 min" fresh while the popup stays open.
+        clearInterval(marker._popupTimer);
+        marker._popupTimer = setInterval(refresh, 5000);
       });
+
+      marker.on("popupclose", () => clearInterval(marker._popupTimer));
     });
 
     document.getElementById("stationCount").textContent =
@@ -1049,104 +1128,142 @@ header{
 
   async function buildStationPopup(station) {
 
-    const departureLists = await Promise.all(
-      station.stop_ids.map(async stopId => {
+  const departureLists = await Promise.all(
+    station.stop_ids.map(async (stopId) => {
+      try {
+        const url =
+          `${API}/api/metro/simulation/stations/` +
+          `${encodeURIComponent(stopId)}/departures` +
+          `?date=${encodeURIComponent(simulationDate)}` +
+          `&time=${encodeURIComponent(secondsToTime(simulationSeconds))}` +
+          `&limit=20`;
 
-        try {
-          const url =
-            `${API}/api/metro/simulation/stations/` +
-            `${encodeURIComponent(stopId)}/departures` +
-            `?date=${encodeURIComponent(simulationDate)}` +
-            `&time=${encodeURIComponent(secondsToTime(simulationSeconds))}` +
-            `&limit=5`;
+        const response = await fetch(url, {
+          cache: "no-store"
+        });
 
-          const response = await fetch(url);
+        if (!response.ok) return [];
 
-          if (!response.ok) return [];
+        const data = await response.json();
 
-          const data = await response.json();
+        return (data.departures || []).map(d => ({
+          ...d,
+          stop_id: stopId
+        }));
 
-          return (data.departures || []).map(d => ({
-            ...d,
-            stop_id: stopId
-          }));
+      } catch (error) {
+        console.error("Departure fetch failed:", error);
+        return [];
+      }
+    })
+  );
 
-        } catch {
-          return [];
-        }
-      })
+  const allDepartures = departureLists
+    .flat()
+    .filter(d =>
+      d.scheduled_arrival_seconds != null &&
+      d.scheduled_departure_seconds != null
     );
 
-    const departures = departureLists
-      .flat()
-      .sort(
-        (a,b) =>
-          a.scheduled_departure_seconds -
-          b.scheduled_departure_seconds
-      )
-      .slice(0, 6);
+  /*
+   * Remove duplicates.
+   * Same trip can appear through multiple stop_ids
+   * at an interchange station.
+   */
+  const uniqueDepartures = [];
+  const seen = new Set();
 
-    const tags = station.routes.map(
-      route =>
-        `<span class="tag" style="background:${ROUTE_COLORS[route] || "#555"}">${escapeHTML(route)}</span>`
-    ).join("");
+  for (const d of allDepartures) {
 
-    let departureHTML = "";
-
-    if (!departures.length) {
-
-      departureHTML =
-        `<div style="margin-top:8px">No further scheduled departures in this simulation window.</div>`;
-
-    } else {
-
-      departureHTML = departures.map(d => {
-
-        const delta =
-          d.scheduled_departure_seconds - simulationSeconds;
-
-        const mins = Math.max(0, Math.floor(delta / 60));
-
-        return `
-          <div class="departure">
-            <span>
-              <b>${escapeHTML(d.route_id)}</b> · ${escapeHTML(d.headsign || "") }
-            </span>
-            <span>${mins === 0 ? "due" : mins + " min"}</span>
-          </div>
-          <div class="departure-times">
-            <span><b>Arrival:</b> ${d.scheduled_arrival_seconds != null ? secondsToTime(d.scheduled_arrival_seconds) : "—"}</span>
-            <span><b>Departure:</b> ${d.scheduled_departure_seconds != null ? secondsToTime(d.scheduled_departure_seconds) : "—"}</span>
-          </div>
-        `;
-
-      }).join("");
+    if (seen.has(d.trip_id)) {
+      continue;
     }
 
-    return `
-      <div class="station-popup">
-        <h4>${escapeHTML(station.name)}</h4>
-
-        <div class="route-tags">${tags}</div>
-
-        ${
-          station.intersection
-            ? `<div><b>INTERCHANGE / INTERSECTION</b></div>`
-            : ""
-        }
-
-        <div style="margin-top:8px;font-weight:700">
-          Next scheduled trains
-        </div>
-
-        ${departureHTML}
-
-        <div class="popup-note">
-          Times are timetable-based and simulated, not live arrivals.
-        </div>
-      </div>
-    `;
+    seen.add(d.trip_id);
+    uniqueDepartures.push(d);
   }
+
+  uniqueDepartures.sort(
+    (a, b) =>
+      Number(a.scheduled_departure_seconds) -
+      Number(b.scheduled_departure_seconds)
+  );
+
+  // Skip trains that END at this station (headsign = this station).
+  // They arrive here but never depart for passengers.
+  const here = normalizeStationName(station.name);
+  const departures = uniqueDepartures
+    .filter(d => normalizeStationName(d.headsign) !== here)
+    .slice(0, 6);
+
+  const routeColors = {
+    RED: "#e53935",
+    BLUE: "#1976d2",
+    GREEN: "#43a047"
+  };
+
+  const badges = station.routes.map(r =>
+    `<span class="route-badge" style="background:${routeColors[r] || "#555"}">${escapeHTML(r)}</span>`
+  ).join("");
+
+  // If the next train is > 30 min away, the metro is not running (night).
+  const NIGHT_GAP = 1800;
+  const firstGap = departures.length
+    ? Number(departures[0].scheduled_arrival_seconds) - Number(simulationSeconds)
+    : 0;
+  const notRunning = departures.length > 0 && firstGap > NIGHT_GAP;
+  const shown = notRunning ? departures.slice(0, 1) : departures;
+
+  let trainHTML;
+
+  if (departures.length === 0) {
+    trainHTML = `<div class="station-no-trains">No more scheduled trains today. Metro service has ended.</div>`;
+  } else {
+    trainHTML = (notRunning
+      ? `<div class="station-no-trains"><b>Metro is not running right now.</b> Next train:</div>`
+      : "") + shown.map(d => {
+      const arrival = secondsToTime(Number(d.scheduled_arrival_seconds));
+      const departure = secondsToTime(Number(d.scheduled_departure_seconds));
+      // Minutes until the train ARRIVES. Already on the platform => "due".
+      const diff = Number(d.scheduled_arrival_seconds) - Number(simulationSeconds);
+      const mins = Math.floor(diff / 60);
+      const dueText = mins <= 0 ? "due"
+        : mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min`
+        : `${mins} min`;
+      const color = routeColors[d.route_id] || "#555";
+
+      return `
+        <div class="station-train">
+          <div class="station-train-name">
+            <strong style="color:${color}">${escapeHTML(d.route_id)}</strong>
+            <span>·</span>
+            <span>${escapeHTML(d.headsign || "")}</span>
+            <span class="station-train-due">${dueText}</span>
+          </div>
+          <div class="station-train-times">
+            <div class="station-time"><strong>Arrival:</strong><span>${arrival}</span></div>
+            <div class="station-time"><strong>Departure:</strong><span>${departure}</span></div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  return `
+    <div class="station-popup">
+      <div class="station-popup-title">
+        <h4>${escapeHTML(station.name)}</h4>
+        <img src="assets/hmrl-logo.png" class="station-popup-logo"
+             alt="" onerror="this.style.display='none'">
+      </div>
+      <div class="station-badges">${badges}</div>
+      <div class="station-popup-subtitle">Next scheduled trains</div>
+      ${trainHTML}
+      <div class="station-popup-note">
+        Times are timetable-based and simulated, not live arrivals.
+      </div>
+    </div>
+  `;
+}
 
   // -----------------------------
   // Train markers
@@ -1171,7 +1288,7 @@ function trainColor(routeId) {
       className: "",
       html: `
         <div class="train-marker">
-          <div class="metro-train-icon" style="transform:rotate(${angle}deg);--train-color:${color}">
+          <div class="metro-train-icon" style="transform:rotate(${angle - 90}deg);--train-color:${color}">
             <div class="metro-train-body"></div>
             <div class="metro-train-window"></div>
             <div class="metro-train-wheel left"></div>
@@ -1181,6 +1298,24 @@ function trainColor(routeId) {
         </div>`,
       iconSize: [42,30],
       iconAnchor: [21,15]
+    });
+  }
+
+  // Legend is drawn with the SAME icon code as the map, so colours and
+  // shapes can never differ from what is on the map.
+  function fillLegend() {
+    const icons = {
+      "station-normal": metroStationIcon("normal"),
+      "station-terminal": metroStationIcon("terminal"),
+      "station-interchange": metroStationIcon("interchange"),
+      "station-both": metroStationIcon("both"),
+      "transport-bus": transportIcon("bus"),
+      "transport-railway": transportIcon("railway"),
+      "train": trainIcon(90, "BLUE")
+    };
+    document.querySelectorAll("[data-legend]").forEach(el => {
+      const ic = icons[el.dataset.legend];
+      if (ic) el.innerHTML = ic.options.html;
     });
   }
 
@@ -1288,6 +1423,7 @@ function trainColor(routeId) {
         ).addTo(trainLayer);
 
         marker.bindPopup(trainPopup(v));
+        marker._bearing = v.bearing;
         marker._moveToken = 0;
         marker._lastState = v.state;
 
@@ -1314,7 +1450,9 @@ function trainColor(routeId) {
 
         marker._lastState = v.state;
 
-        marker.setIcon(trainIcon(v.bearing, v.route_id));
+        // At a station the backend sends no bearing: keep the last heading.
+        if (v.bearing != null) marker._bearing = v.bearing;
+        marker.setIcon(trainIcon(marker._bearing, v.route_id));
 
         if (marker.isPopupOpen()) {
           marker.setPopupContent(trainPopup(v));
@@ -1503,7 +1641,13 @@ function trainColor(routeId) {
 
       document.getElementById("serviceStatus").innerHTML =
         `Date: <b>${escapeHTML(data.simulation_date)}</b><br>` +
-        `Time: <b>${time} IST</b><br>` +
+        `Time: <b>${time}</b><br>` +
+        `Metro: <b>${{
+          RUNNING: "Running",
+          NOT_STARTED: "Not running (first train " + (data.service_first_seconds != null ? secondsToTime(data.service_first_seconds) : "—") + ")",
+          ENDED: "Service ended for today",
+          NO_SERVICE_TODAY: "No service today"
+        }[data.service_status] || "—"}</b><br>` +
         `Service: <b>${escapeHTML((data.active_service_ids || []).join(", ") || "none")}</b>`;
 
     } catch (error) {
@@ -1522,29 +1666,6 @@ function trainColor(routeId) {
   // -----------------------------
   // Controls
   // -----------------------------
-
-  document.getElementById("dateInput").addEventListener(
-    "change",
-    () => {
-      simulationDate =
-        document.getElementById("dateInput").value;
-
-      updateSimulation(true);
-    }
-  );
-
-  document.getElementById("timeInput").addEventListener(
-    "change",
-    () => {
-      simulationSeconds =
-        timeToSeconds(
-          document.getElementById("timeInput").value
-        );
-
-      setTimeControls();
-      updateSimulation(true);
-    }
-  );
 
   document.querySelectorAll("[data-route]").forEach(
     checkbox => {
@@ -1582,23 +1703,18 @@ function trainColor(routeId) {
 
   setInterval(() => {
 
-    if (!running) return;
-
-    // One real second advances the timetable by one simulated second.
-    simulationSeconds += 1;
-
-    if (simulationSeconds >= 86400) {
-      simulationSeconds = 86390;
-      running = false;
-    }
+    // Always follow the device clock (also correct after tab sleep / midnight).
+    const n = metroNow();
+    simulationDate = n.date;
+    simulationSeconds = n.seconds;
 
     setTimeControls();
-
-    // Backend refresh is throttled internally. The frontend animation runs
-    // continuously between these updates.
     updateSimulation(false);
 
   }, 1000);
+
+  // Re-sync with the server every 5 minutes (fixes drift / sleeping tabs).
+  setInterval(syncClock, 300000);
 
   // -----------------------------
   // Transport controls
@@ -1615,6 +1731,14 @@ function trainColor(routeId) {
   (async () => {
 
     try {
+
+      fillLegend();
+      await detectApi();
+      await syncClock();
+      const n0 = metroNow();
+      simulationDate = n0.date;
+      simulationSeconds = n0.seconds;
+      setTimeControls();
 
       await Promise.all([
         loadMapData(),
