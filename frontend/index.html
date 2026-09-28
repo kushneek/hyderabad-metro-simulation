@@ -301,7 +301,7 @@ header{
   width:16px;
   height:12px;
   border-radius:4px 4px 3px 3px;
-  background:#ff7a00;
+  background:var(--train-color,#1f2937);
   border:2px solid #fff;
   box-shadow:0 1px 3px rgba(0,0,0,.25);
 }
@@ -332,7 +332,7 @@ header{
   height:0;
   border-top:5px solid transparent;
   border-bottom:5px solid transparent;
-  border-left:7px solid #ff7a00;
+  border-left:7px solid var(--train-color,#1f2937);
   filter:drop-shadow(0 0 0 #fff);
 }
 .metro-train-arrow:after{
@@ -358,7 +358,7 @@ header{
   font-weight:800;
   line-height:1;
 }
-.transport-marker.metro{background:#d92d20}
+.transport-marker.metro{background:#1f2937}
 .transport-marker.bus{background:#2563eb}
 .transport-marker.railway{background:#374151}
 
@@ -382,6 +382,23 @@ header{
   font-size:11px;
 }
 .departure:first-child{border-top:0}
+.departure-times{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  padding:2px 0 6px;
+  font-size:10px;
+  color:#555;
+}
+.auto-sim-note{
+  margin-top:9px;
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:7px;
+  font-size:11px;
+  color:#666;
+  background:rgba(0,0,0,.02);
+}
 
 @media(max-width:850px){
   #sidebar{width:290px}
@@ -448,25 +465,8 @@ header{
         </div>
       </div>
 
-      <div class="controls">
-        <button class="primary" id="playBtn">▶ Play</button>
-        <button id="resetBtn">↺ Reset</button>
-      </div>
-
-      <div class="speed-row">
-        <button class="speed active" data-speed="1">1×</button>
-        <button class="speed" data-speed="2">2×</button>
-        <button class="speed" data-speed="5">5×</button>
-        <button class="speed" data-speed="10">10×</button>
-      </div>
-
-      <div style="margin-top:9px">
-        <input id="timeline" type="range" min="0" max="86400" step="10" value="30600">
-        <div class="time-readout">
-          <span>00:00</span>
-          <b id="timelineLabel">08:30:00</b>
-          <span>24:00</span>
-        </div>
+      <div class="auto-sim-note">
+        Simulation starts automatically at the selected time.
       </div>
     </div>
 
@@ -533,11 +533,11 @@ header{
         Interchange
       </div>
       <div class="legend-item">
-        <span style="width:22px;height:22px;background:#ff7a00;border:2px solid #fff;border-radius:7px"></span>
+        <span style="width:22px;height:22px;background:#1f2937;border:2px solid #fff;border-radius:7px"></span>
         Simulated train + direction arrow
       </div>
       <div class="legend-item">
-        <span style="width:18px;height:18px;background:#d92d20;border-radius:6px"></span>
+        <span style="width:18px;height:18px;background:#1f2937;border-radius:6px"></span>
         Metro station
       </div>
       <div class="legend-item">
@@ -596,13 +596,8 @@ header{
   // -----------------------------
   // Basemaps
   // -----------------------------
-  //
-  // Bhuvan is ONE basemap made from:
-  //   1) satellite imagery underneath
-  //   2) Bhuvan vector/place base-map above it
-  //
-  // Both layers are switched on/off together. OSM is the only
-  // alternative basemap.
+  // These WMS definitions intentionally mirror the Folium configuration
+  // supplied for the project. Do not manually construct Bhuvan tile URLs.
 
   const osm = L.tileLayer(
     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -614,71 +609,31 @@ header{
     }
   );
 
-  // Bhuvan's satellite endpoint is a WMS-C/tiled service.
-  // We build the GetMap request ourselves so the BBOX is always in
-  // EPSG:4326, matching Bhuvan's documented tiled-service interface.
-  const bhuvanSatellite = L.gridLayer({
-    tileSize: 256,
-    maxZoom: 17,
-    updateWhenIdle: true,
-    keepBuffer: 1,
-    attribution: "Bhuvan, ISRO/NRSC"
-  });
-
-  bhuvanSatellite.createTile = function(coords, done) {
-    const tile = document.createElement("img");
-    tile.alt = "Bhuvan satellite imagery";
-    tile.width = 256;
-    tile.height = 256;
-    // Do not set crossOrigin here. Bhuvan's tile server does not need
-    // CORS-enabled image requests for Leaflet to display the tile, and
-    // forcing anonymous CORS can make otherwise valid tiles fail.
-
-    const z = coords.z;
-    const n = Math.pow(2, z);
-    const west = coords.x / n * 360 - 180;
-    const east = (coords.x + 1) / n * 360 - 180;
-    const north = 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * coords.y / n)));
-    const south = 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * (coords.y + 1) / n)));
-
-    const bbox = [west, south, east, north].map(v => v.toFixed(8)).join(",");
-    const url =
-      "https://bhuvan-ras1.nrsc.gov.in/tilecache/tilecache.py" +
-      "?LAYERS=bhuvan_imagery" +
-      "&SERVICE=WMS" +
-      "&VERSION=1.1.1" +
-      "&REQUEST=GetMap" +
-      "&STYLES=" +
-      "&FORMAT=image/jpeg" +
-      "&SRS=EPSG:4326" +
-      "&BBOX=" + encodeURIComponent(bbox) +
-      "&WIDTH=256&HEIGHT=256";
-
-    tile.onload = () => done(null, tile);
-    tile.onerror = () => done(new Error("Bhuvan satellite tile failed"), tile);
-    tile.src = url;
-    return tile;
-  };
-
   const bhuvanPlaceBase = L.tileLayer.wms(
     "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms/",
     {
       layers: "india3",
       format: "image/png",
-      version: "1.1.1",
-      srs: "EPSG:4326",
       transparent: true,
-      opacity: 1,
-      attribution: "Bhuvan, ISRO/NRSC",
-      maxZoom: 17,
+      attribution: "Bhuvan, ISRO",
       updateWhenIdle: true,
       keepBuffer: 1
     }
   );
 
-  // IMPORTANT:
-  // This is the single "Bhuvan" basemap.
-  // Satellite is underneath; place/vector base is above.
+  const bhuvanSatellite = L.tileLayer.wms(
+    "https://bhuvan-ras1.nrsc.gov.in/tilecache/tilecache.py",
+    {
+      layers: "bhuvan_ocm_wbase",
+      format: "image/jpeg",
+      transparent: true,
+      attribution: "Bhuvan, ISRO",
+      updateWhenIdle: true,
+      keepBuffer: 1
+    }
+  );
+
+  // One Bhuvan basemap: satellite first, vector/base map second.
   const bhuvanBase = L.layerGroup([
     bhuvanSatellite,
     bhuvanPlaceBase
@@ -686,89 +641,54 @@ header{
 
   osm.addTo(map);
 
-  // Only two choices are exposed to the user.
-  L.control.layers(
-    {
-      "OpenStreetMap": osm,
-      "Bhuvan": bhuvanBase
-    },
-    null,
-    {
-      collapsed: true,
-      position: "topright"
-    }
-  ).addTo(map);
+  let activeBase = "osm";
 
   document.getElementById("osmBtn").onclick = () => switchBase("osm");
   document.getElementById("bhuvanBtn").onclick = () => switchBase("bhuvan");
 
   map.on("zoomend", updateBhuvanPlaceLabels);
 
-  let activeBase = "osm";
-  let bhuvanLoadedOnce = false;
-  document.getElementById("osmBtn").style.fontWeight = "700";
-
   function switchBase(name) {
 
     if (name === activeBase) return;
 
-    document.getElementById("osmBtn").style.fontWeight =
-      name === "osm" ? "700" : "400";
-    document.getElementById("bhuvanBtn").style.fontWeight =
-      name === "bhuvan" ? "700" : "400";
-
     if (name === "bhuvan") {
-
       map.removeLayer(osm);
-
-      // Bhuvan is deliberately loaded only when requested.
-      // This prevents the initial page load from waiting for
-      // two remote WMS services.
       bhuvanBase.addTo(map);
-
+      bhuvanPlaceLabelLayer.addTo(map);
       activeBase = "bhuvan";
-      bhuvanLoadedOnce = true;
+
+      document.getElementById("osmBtn").style.fontWeight = "400";
+      document.getElementById("bhuvanBtn").style.fontWeight = "700";
 
     } else {
-
       map.removeLayer(bhuvanBase);
+      map.removeLayer(bhuvanPlaceLabelLayer);
       osm.addTo(map);
-
       activeBase = "osm";
+
+      document.getElementById("osmBtn").style.fontWeight = "700";
+      document.getElementById("bhuvanBtn").style.fontWeight = "400";
     }
 
-    // Explicit panes keep these above the Bhuvan imagery/place layers.
-    routeLayer.bringToFront();
-    stationLayer.bringToFront();
-    bhuvanPlaceLabelLayer.bringToFront();
-    trainLayer.bringToFront();
-    updateBhuvanPlaceLabels();
-
-    // Bhuvan can trigger a map repaint while its tiles arrive. Re-assert the
-    // metro overlays and refresh the current simulation without resetting
-    // the simulation clock or recreating the train markers.
+    // Metro application layers use Leaflet's overlay pane, so they remain
+    // above either basemap. Do not call bringToFront() on LayerGroup objects.
     map.invalidateSize(false);
-    if (activeTransport === "metro") {
-      if (mapData) {
-        drawRoutes();
-        drawStations();
-      }
-      updateSimulation(true);
-    }
+    updateBhuvanPlaceLabels();
   }
 
   // -----------------------------
   // Layer groups
   // -----------------------------
 
-  const routeLayer = L.layerGroup().addTo(map);
+  const routeLayer = L.featureGroup().addTo(map);
   const stationLayer = L.layerGroup().addTo(map);
   const trainLayer = L.layerGroup().addTo(map);
   // Bhuvan itself provides settlement/city layers, but the current `india3`
   // base layer does not render their text labels in this Leaflet setup.
   // Keep a lightweight name overlay so place/station names remain readable
   // above the Bhuvan imagery and base vector layer.
-  const bhuvanPlaceLabelLayer = L.layerGroup().addTo(map);
+  const bhuvanPlaceLabelLayer = L.layerGroup();
   const intermodalLayer = L.layerGroup();
 
   // Major Hyderabad-area railway stations for the Railway view.
@@ -815,8 +735,8 @@ header{
 
   let mapData = null;
   let trainMarkers = {};
-  let running = false;
-  let speed = 1;
+  // The simulation runs automatically; there is no manual play/pause or speed control.
+  let running = true;
   let lastSimulationFetch = 0;
   let simulationFetchInProgress = false;
 
@@ -862,10 +782,6 @@ header{
   }
 
   function setTimeControls() {
-    document.getElementById("timeline").value = simulationSeconds;
-    document.getElementById("timelineLabel").textContent =
-      secondsToTime(simulationSeconds);
-
     document.getElementById("timeInput").value =
       secondsToTime(simulationSeconds);
   }
@@ -1007,7 +923,12 @@ header{
     bhuvanPlaceLabelLayer.clearLayers();
 
     // The labels are intentionally only shown on the Bhuvan basemap.
-    if (activeBase !== "bhuvan" || !mapData) return;
+    if (activeBase !== "bhuvan" || !mapData) {
+      if (map.hasLayer(bhuvanPlaceLabelLayer)) map.removeLayer(bhuvanPlaceLabelLayer);
+      return;
+    }
+
+    if (!map.hasLayer(bhuvanPlaceLabelLayer)) bhuvanPlaceLabelLayer.addTo(map);
 
     const zoom = map.getZoom();
     const selected = selectedRoutes();
@@ -1076,13 +997,29 @@ header{
         }
       ).addTo(stationLayer);
 
+      marker.bindPopup(stationPopupLoading(station), {
+        closeButton: true,
+        autoClose: true,
+        closeOnClick: true
+      });
+
       marker.on("click", async () => {
-        marker.bindPopup(
-          stationPopupLoading(station)
-        ).openPopup();
+        // Re-open the popup every time the station marker is clicked.
+        // The previous implementation re-bound the popup on every click,
+        // which could leave the marker with stale popup state after the
+        // asynchronous departure request completed.
+        marker.setPopupContent(stationPopupLoading(station));
+        marker.openPopup();
 
         const html = await buildStationPopup(station);
-        marker.setPopupContent(html);
+
+        // Only update this marker if it is still on the map.
+        if (marker._map) {
+          marker.setPopupContent(html);
+          if (!marker.isPopupOpen()) {
+            marker.openPopup();
+          }
+        }
       });
     });
 
@@ -1173,10 +1110,13 @@ header{
         return `
           <div class="departure">
             <span>
-              <b>${secondsToTime(d.scheduled_departure_seconds)}</b>
-              · ${escapeHTML(d.route_id)}
+              <b>${escapeHTML(d.route_id)}</b> · ${escapeHTML(d.headsign || "") }
             </span>
             <span>${mins === 0 ? "due" : mins + " min"}</span>
+          </div>
+          <div class="departure-times">
+            <span><b>Arrival:</b> ${d.scheduled_arrival_seconds != null ? secondsToTime(d.scheduled_arrival_seconds) : "—"}</span>
+            <span><b>Departure:</b> ${d.scheduled_departure_seconds != null ? secondsToTime(d.scheduled_departure_seconds) : "—"}</span>
           </div>
         `;
 
@@ -1212,21 +1152,26 @@ header{
   // Train markers
   // -----------------------------
 
-  const METRO_TRAIN_COLOR = "#ff7a00";
+  const METRO_TRAIN_COLOR = "#1f2937";
+
+function trainColor(routeId) {
+  return METRO_TRAIN_COLOR;
+}
 
   function normalizeBearing(bearing) {
     const n = Number(bearing);
     return Number.isFinite(n) ? n : 0;
   }
 
-  function trainIcon(bearing) {
+  function trainIcon(bearing, routeId) {
     const angle = normalizeBearing(bearing);
+    const color = trainColor(routeId);
 
     return L.divIcon({
       className: "",
       html: `
         <div class="train-marker">
-          <div class="metro-train-icon" style="transform:rotate(${angle}deg)">
+          <div class="metro-train-icon" style="transform:rotate(${angle}deg);--train-color:${color}">
             <div class="metro-train-body"></div>
             <div class="metro-train-window"></div>
             <div class="metro-train-wheel left"></div>
@@ -1239,16 +1184,18 @@ header{
     });
   }
 
-  function animateTrain(marker, targetLatLng, duration = 1250) {
-    // Keep the animation alive across backend updates. The old version used
-    // a 1400 ms animation while new positions arrived about every 1500 ms,
-    // which created a visible pause between one movement and the next.
-    // We now use a slightly overlapping animation and always start from the
-    // train's CURRENT rendered position, so updates do not cause a jump.
+  function stopTrainAnimation(marker) {
+    marker._moveToken = (marker._moveToken || 0) + 1;
+
     if (marker._moveFrame) {
       cancelAnimationFrame(marker._moveFrame);
       marker._moveFrame = null;
     }
+  }
+
+  function animateTrain(marker, targetLatLng, duration = 700) {
+    stopTrainAnimation(marker);
+    const token = marker._moveToken;
 
     const from = marker.getLatLng();
     const start = performance.now();
@@ -1256,9 +1203,9 @@ header{
     const targetLng = Number(targetLatLng[1]);
 
     function step(now) {
+      if (marker._moveToken !== token) return;
+
       const progress = Math.min(1, (now - start) / duration);
-      // Smoothstep gives zero velocity at neither endpoint and avoids the
-      // noticeable stop/start feeling of the previous ease-in/ease-out.
       const smooth = progress * progress * (3 - 2 * progress);
 
       marker.setLatLng([
@@ -1335,21 +1282,39 @@ header{
           [v.lat, v.lon],
           {
             pane: "metroTrainPane",
-            icon: trainIcon(v.bearing),
+            icon: trainIcon(v.bearing, v.route_id),
             zIndexOffset: 1000
           }
         ).addTo(trainLayer);
 
         marker.bindPopup(trainPopup(v));
+        marker._moveToken = 0;
+        marker._lastState = v.state;
 
         trainMarkers[v.trip_id] = marker;
 
       } else {
 
-        // Move the whole metro icon continuously between backend updates.
-        // The direction arrow is part of the same icon, so it never detaches.
-        animateTrain(marker, [v.lat, v.lon]);
-        marker.setIcon(trainIcon(v.bearing));
+        // Respect the timetable state from the backend. A train in a station
+        // must remain exactly at that station for the scheduled dwell period.
+        if (v.state === "DWELLING" ||
+            v.state === "AT_ORIGIN" ||
+            v.state === "AT_TERMINAL") {
+
+          // A timetable stop is authoritative: cancel any in-flight
+          // animation and hold the train exactly at the station.
+          stopTrainAnimation(marker);
+          marker.setLatLng([Number(v.lat), Number(v.lon)]);
+
+        } else if (v.state === "IN_TRANSIT") {
+
+          // Only interpolate while the backend says the train is travelling.
+          animateTrain(marker, [Number(v.lat), Number(v.lon)]);
+        }
+
+        marker._lastState = v.state;
+
+        marker.setIcon(trainIcon(v.bearing, v.route_id));
 
         if (marker.isPopupOpen()) {
           marker.setPopupContent(trainPopup(v));
@@ -1433,7 +1398,6 @@ header{
     });
 
     intermodalLayer.addTo(map);
-    intermodalLayer.bringToFront();
   }
 
   function clearMetroView() {
@@ -1471,10 +1435,6 @@ header{
           : "Hyderabad railway stations are highlighted. Metro simulation is hidden.";
     }
 
-    routeLayer.bringToFront();
-    stationLayer.bringToFront();
-    intermodalLayer.bringToFront();
-    trainLayer.bringToFront();
   }
 
   // -----------------------------
@@ -1509,7 +1469,7 @@ header{
 
     // Prevent overlapping requests and excessive calls while the
     // simulation clock is running.
-    if (!force && (simulationFetchInProgress || now - lastSimulationFetch < 900)) {
+    if (!force && (simulationFetchInProgress || now - lastSimulationFetch < 300)) {
       return;
     }
 
@@ -1539,7 +1499,7 @@ header{
       renderTrains(data.vehicles || []);
 
       document.getElementById("connStatus").innerHTML =
-        `<span class="connected">● Connected to local simulation API</span>`;
+        `<span class="connected">● Connected to simulation API</span>`;
 
       document.getElementById("serviceStatus").innerHTML =
         `Date: <b>${escapeHTML(data.simulation_date)}</b><br>` +
@@ -1586,59 +1546,6 @@ header{
     }
   );
 
-  document.getElementById("timeline").addEventListener(
-    "input",
-    event => {
-
-      simulationSeconds =
-        Number(event.target.value);
-
-      setTimeControls();
-      updateSimulation(true);
-    }
-  );
-
-  document.getElementById("playBtn").addEventListener(
-    "click",
-    () => {
-
-      running = !running;
-
-      document.getElementById("playBtn").textContent =
-        running ? "❚❚ Pause" : "▶ Play";
-    }
-  );
-
-  document.getElementById("resetBtn").addEventListener(
-    "click",
-    () => {
-
-      running = false;
-
-      document.getElementById("playBtn").textContent =
-        "▶ Play";
-
-      simulationSeconds = 0;
-
-      setTimeControls();
-      updateSimulation();
-    }
-  );
-
-  document.querySelectorAll(".speed").forEach(button => {
-
-    button.addEventListener("click", () => {
-
-      speed =
-        Number(button.dataset.speed);
-
-      document.querySelectorAll(".speed")
-        .forEach(x => x.classList.remove("active"));
-
-      button.classList.add("active");
-    });
-  });
-
   document.querySelectorAll("[data-route]").forEach(
     checkbox => {
 
@@ -1677,12 +1584,12 @@ header{
 
     if (!running) return;
 
-    simulationSeconds += 10 * speed;
+    // One real second advances the timetable by one simulated second.
+    simulationSeconds += 1;
 
     if (simulationSeconds >= 86400) {
       simulationSeconds = 86390;
       running = false;
-      document.getElementById("playBtn").textContent = "▶ Play";
     }
 
     setTimeControls();
