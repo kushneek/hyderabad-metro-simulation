@@ -574,23 +574,30 @@ header{
   // Same origin when deployed (this app serves the page). Opening the file
   // directly from disk still talks to a local server on port 8000.
   let API = window.API_BASE ?? "";
+  let apiFound = false;
 
-  // Finds the real API. Deployed: same origin. Local: also tries port 8000, so
-  // it still works if this page is opened from VS Code Live Server, a file://
-  // path, or any other static server (that is what caused "HTTP 404").
+  // Last-resort address of the deployed backend (used when this page is
+  // hosted somewhere that has no API, e.g. a Render Static Site or Netlify).
+  const DEFAULT_API = "https://hyderabad-metro-simulation.onrender.com";
+
+  // Finds the real API: same origin first (normal deployment), then local
+  // port 8000 (Live Server / file://), then DEFAULT_API.
   async function detectApi() {
-    if (window.API_BASE !== undefined) return;
+    if (window.API_BASE !== undefined) { apiFound = true; return true; }
+
     const local = ["", "localhost", "127.0.0.1"].includes(location.hostname);
     const candidates = [];
     if (location.protocol !== "file:") candidates.push("");
     if (local) candidates.push("http://127.0.0.1:8000", "http://localhost:8000");
+    if (!candidates.includes(DEFAULT_API) && location.origin !== DEFAULT_API) candidates.push(DEFAULT_API);
 
     for (const c of candidates) {
       try {
         const r = await fetch(`${c}/health`, { cache: "no-store" });
-        if (r.ok && (await r.json()).status === "ok") { API = c; return; }
+        if (r.ok && (await r.json()).status === "ok") { API = c; apiFound = true; return true; }
       } catch (e) { /* try next */ }
     }
+    return false;
   }
 
   const ROUTE_COLORS = {
@@ -1627,7 +1634,12 @@ function trainColor(routeId) {
         );
 
       if (!response.ok)
-        throw new Error(`Simulation API returned HTTP ${response.status}`);
+        throw new Error(
+          `Simulation API returned HTTP ${response.status} ` +
+          `(${API || location.origin}/api/metro/simulation/vehicles)` +
+          (apiFound ? "" :
+            ". Backend not found: app.py must run as a Render Web Service, not a Static Site.")
+        );
 
       const data = await response.json();
 
