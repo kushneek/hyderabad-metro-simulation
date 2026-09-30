@@ -40,7 +40,7 @@ def now_local() -> datetime:
     return datetime.now(METRO_TZ)
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = "C:/Users/ASUS/Downloads/hmrl-metro-project (1)/hmrl-metro-project/"
 
 app = FastAPI(title="HMRL Metro Timetable-Based Simulation API")
 # The page is served by this same app, so CORS is only needed if you host the
@@ -113,7 +113,7 @@ def apply_learned_dwell(rows, learned):
 # If the folder ./gtfs (or $GTFS_DIR) contains routes.txt, calendar.txt,
 # shapes.txt, stops.txt, trips.txt and stop_times.txt, they are loaded
 # directly and MySQL is NOT needed (ideal for Render). Otherwise MySQL is used.
-GTFS_DIR = os.environ.get("GTFS_DIR", os.path.join(BASE_DIR, "gtfs"))
+GTFS_DIR = os.environ.get("GTFS_DIR", os.path.join(BASE_DIR, "gtfs_data"))
 GTFS_FILES = ("routes.txt", "calendar.txt", "shapes.txt", "stops.txt", "trips.txt", "stop_times.txt")
 
 
@@ -1027,6 +1027,7 @@ def _site_file(name, media_type=None):
 
 
 @app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
 def site_index():
     return _site_file("index.html")
 
