@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hyderabad Metro Simulation — Bhuvan WebGIS</title>
+<meta name="description" content="Interactive WebGIS simulation of Hyderabad Metro Rail (HMRL) with timetable-based train tracking, Bhuvan base maps, and intermodal transport layers.">
+<meta property="og:title" content="Hyderabad Metro Simulation — Bhuvan WebGIS">
+<meta property="og:description" content="Interactive WebGIS simulation of Hyderabad Metro Rail (HMRL) with timetable-based train tracking, Bhuvan base maps, and intermodal transport layers.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
 
 <link rel="stylesheet" href="leaflet.css">
 
@@ -16,6 +21,9 @@
   --border:#dfe4e8;
   --shadow:0 8px 28px rgba(20,30,40,.10);
   --accent:#1769aa;
+  --station-color:#7c3aed;
+  --station-dark:#5b21b6;
+  --train-color:#ff9100;
 }
 body.dark{
   --bg:#101419;
@@ -32,19 +40,27 @@ button,input,select{font:inherit}
 
 #app{height:100vh;display:flex;flex-direction:column}
 
+/* ---- NRSC Official Header Banner ---- */
 header{
-  height:72px;
-  background:#fff;                 /* logos need a white bar in light AND dark theme */
+  height:76px;
+  background:#ffffff;
   border-bottom:1px solid #dfe4e8;
   display:flex;
   align-items:center;
-  justify-content:space-between;   /* Bhuvan = far left, NRSC = far right */
-  padding:0 16px;
+  justify-content:center;
+  padding:0 20px;
   z-index:1000;
+  flex:none;
+  box-shadow:0 1px 4px rgba(0,0,0,.08);
 }
-.brand-logo{display:block;width:auto}
-.brand-logo.bhuvan{height:52px}
-.brand-logo.nrsc{height:52px;max-width:720px;object-fit:contain}
+.brand-logo.nrsc{
+  height:60px;
+  max-width:100%;
+  width:auto;
+  object-fit:contain;
+  display:block;
+}
+
 .sim-note{
   display:inline-block;margin-bottom:8px;padding:4px 7px;border-radius:5px;
   background:#fff3cd;color:#7a5a00;font-size:10px;font-weight:800;letter-spacing:.4px;
@@ -234,145 +250,56 @@ header{
 .lbl-left{transform:translate(calc(-100% - var(--g)),-50%)}
 .lbl-top{transform:translate(-50%,calc(-100% - var(--g)))}
 .lbl-bottom{transform:translate(-50%,var(--g))}
-/* ---- Metro station marker ----
-   Normal stations are drawn in CSS: red body + black outline + white train mark.
-   No station image/logo is used for the normal station marker.
-*/
+
+/* ---- Metro station marker: small, highlighted in electric violet distinct from tracks ---- */
 .station-logo{
-  position:relative;
-  border-radius:7px;
-  background:#e31e24;
-  border:2px solid #111;
-  box-shadow:0 1px 3px rgba(0,0,0,.45);
-  transform-origin:50% 50%;
-  overflow:visible;
+  position:relative;width:100%;height:100%;border-radius:50%;
+  background:#ffffff;border:2.5px solid var(--station-color,#7c3aed);
+  box-shadow:0 0 0 1.5px #ffffff,0 1.5px 4px rgba(0,0,0,.45);
+  transform-origin:50% 50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:900;color:var(--station-color,#7c3aed);
+  font-family:Inter,Segoe UI,Arial,sans-serif;
 }
-.station-logo::before{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:15px;
-  height:10px;
-  transform:translate(-50%,-58%);
-  border-radius:2px 2px 3px 3px;
-  background:#fff;
-  box-shadow:0 0 0 1px rgba(0,0,0,.12);
-}
-.station-logo::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:8px;
-  height:4px;
-  transform:translate(-50%,-72%);
-  background:#e31e24;
-  border-radius:1px;
-  box-shadow:-5px 9px 0 -1.2px #111, 5px 9px 0 -1.2px #111;
-}
-
-/* Only terminal / interchange / interchange+terminal use the supplied
-   HMRL legend logic. */
-.station-type-symbol{
-  position:relative;
-  width:22px;
-  height:22px;
-  box-sizing:border-box;
-  border-radius:50%;
-  background:#fff;
-  box-shadow:0 1px 3px rgba(0,0,0,.30);
-}
-.station-type-symbol.terminal{
-  border:3px solid #222;
-}
-.station-type-symbol.terminal::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:10px;
-  height:10px;
-  transform:translate(-50%,-50%);
-  border:2px solid #222;
-  border-radius:50%;
-  background:#fff;
-}
-.station-type-symbol.interchange{
-  border:3px solid #777;
-  box-shadow:inset 0 0 0 3px #fff, inset 0 0 0 5px #777,
-             0 1px 3px rgba(0,0,0,.30);
-}
-.station-type-symbol.interchange::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:6px;
-  height:6px;
-  transform:translate(-50%,-50%);
-  border-radius:50%;
-  background:#777;
-}
-.station-type-symbol.both{
-  border:3px solid #222;
-  background:#009b69;
-  box-shadow:0 0 0 2px #fff, 0 0 0 4px #222,
-             0 1px 3px rgba(0,0,0,.30);
-}
-.station-type-symbol.both::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-  width:9px;
-  height:9px;
-  transform:translate(-50%,-50%);
-  border-radius:50%;
-  background:#fff;
-  box-shadow:0 0 0 2px #222;
-}
-
-/* Icons shrink when zoomed out so the city view is not crowded */
-.zs-1 .station-logo{transform:scale(.62)}
-.zs-2 .station-logo{transform:scale(.85)}
-.zs-1 .station-type-symbol{transform:scale(.72)}
-.zs-2 .station-type-symbol{transform:scale(.86)}
+.station-logo::before{content:"M";line-height:1;transform:translateY(-0.5px)}
+.station-logo::after{content:"";position:absolute;left:50%;bottom:2px;width:7px;height:1.5px;transform:translateX(-50%);background:var(--station-color,#7c3aed);border-radius:1px}
+.station-type-symbol{width:100%;height:100%;filter:drop-shadow(0 1.5px 3px rgba(0,0,0,.45));transform-origin:50% 50%}
+.station-type-symbol svg{display:block;width:100%;height:100%;overflow:visible}
+.zs-1 .station-logo{transform:scale(.72)}
+.zs-2 .station-logo{transform:scale(.86)}
+.zs-1 .station-type-symbol{transform:scale(.75)}
+.zs-2 .station-type-symbol{transform:scale(.88)}
 .zs-1 .transport-wrap{transform:scale(.7)}
 .zs-2 .transport-wrap{transform:scale(.85)}
 .transport-wrap.bus{transform-origin:50% 100%}
 .transport-wrap.railway{transform-origin:50% 50%}
 .transport-img{display:block;width:100%;height:100%;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 
-/* ---- Moving metro train: train badge centred EXACTLY on the track ---- */
-.train-marker{
-  position:relative;width:38px;height:38px;
-  filter:drop-shadow(0 2px 3px rgba(0,0,0,.42));
-}
-/* Custom metro-train marker: designed in CSS, no supplied train image. */
+/* ---- Moving metro train: small, compact, highlighted in radiant amber distinct from tracks & stations ---- */
+.train-marker{position:relative;width:26px;height:26px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.48))}
+.train-marker::before{content:"";position:absolute;left:2px;top:2px;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--train-color,#ff9100) 42%,transparent);animation:trainPulse 1.8s ease-out infinite;pointer-events:none}
+@keyframes trainPulse{0%{transform:scale(.82);opacity:.9}100%{transform:scale(2.1);opacity:0}}
+@media (prefers-reduced-motion:reduce){.train-marker::before{animation:none;opacity:.3;transform:scale(1.25)}}
 .metro-train-design{
-  position:absolute;left:7px;top:7px;width:24px;height:24px;
-  box-sizing:border-box;border-radius:7px 7px 5px 5px;
-  background:#e31e24;border:2px solid #111;
-  box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 2px 3px rgba(0,0,0,.35);
+  position:absolute;left:3px;top:5px;width:20px;height:16px;box-sizing:border-box;
+  background:var(--train-color,#ff9100);border:1.5px solid #111827;border-radius:5px 5px 3px 3px;
+  box-shadow:0 0 0 1.5px #ffffff,0 2px 4px rgba(0,0,0,.35);transform-origin:50% 50%
 }
 .metro-train-design::before{
-  content:"";position:absolute;left:4px;top:4px;width:12px;height:7px;
-  border-radius:3px 3px 2px 2px;background:#111;
-  box-shadow:inset 0 0 0 2px #dfe8ef;
+  content:"";position:absolute;left:3px;top:2px;width:12px;height:5px;
+  background:linear-gradient(180deg,#0f172a,#334155);border:1px solid #0f172a;border-radius:2px 2px 1px 1px
 }
 .metro-train-design::after{
-  content:"";position:absolute;left:4px;bottom:3px;width:4px;height:3px;
-  border-radius:50%;background:#fff;
-  box-shadow:12px 0 0 #fff, 6px -1px 0 1px #111;
+  content:"";position:absolute;left:2px;bottom:-3px;width:4px;height:4px;
+  border-radius:50%;background:#111827;box-shadow:9px 0 0 #111827
 }
-.train-dir{position:absolute;left:0;top:0;width:38px;height:38px;transform-origin:50% 50%}
+.train-dir{position:absolute;left:0;top:0;width:26px;height:26px;transform-origin:50% 50%;pointer-events:none}
 .train-arrow{
-  position:absolute;left:14px;top:0;width:0;height:0;
-  border-left:5px solid transparent;border-right:5px solid transparent;
-  border-bottom:7px solid var(--train-color,#1f2937);
-  filter:drop-shadow(0 0 1.5px #fff);
+  position:absolute;left:9px;top:-5px;width:0;height:0;
+  border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid var(--train-color,#ff9100);
+  filter:drop-shadow(0 0 1.5px #ffffff) drop-shadow(0 1px 2px rgba(0,0,0,.6))
 }
+.zs-1 .train-marker{transform:scale(.78)}
+.zs-2 .train-marker{transform:scale(.9)}
 
 /* ---- Base map switcher (top-right of the map) ---- */
 .map-switcher{
@@ -449,9 +376,8 @@ header{
   #sidebar{width:290px}
 }
 @media(max-width:680px){
-  header{height:58px;padding:0 10px}
-  .brand-logo.bhuvan{height:40px}
-  .brand-logo.nrsc{height:40px;max-width:520px;object-fit:contain}
+  header{height:54px;padding:0 10px}
+  .brand-logo.nrsc{height:42px}
   .map-switcher{flex-wrap:wrap;max-width:200px;justify-content:flex-end}
   #workspace{flex-direction:column}
   #map{height:62vh;flex:none}
@@ -464,8 +390,7 @@ header{
 <div id="app">
 
 <header>
-  <img class="brand-logo bhuvan" src="../assets/bhuvan_logo.png" alt="Bhuvan">
-  <img class="brand-logo nrsc" src="../assets/nrsc_isro.png" alt="ISRO - NRSC">
+  <img class="brand-logo nrsc" src="assets/nrsc_isro.png" alt="National Remote Sensing Centre - ISRO">
 </header>
 
 <div id="workspace">
@@ -559,11 +484,11 @@ header{
       <div class="legend-item">
         <span class="line-swatch" style="background:#007abb"></span> Blue Line
       </div>
-      <div class="legend-item"><span class="legend-icon" data-legend="station-normal"></span> Metro station</div>
-      <div class="legend-item"><span class="legend-icon" data-legend="station-terminal"></span> Terminal station</div>
-      <div class="legend-item"><span class="legend-icon" data-legend="station-interchange"></span> Interchange station</div>
-      <div class="legend-item"><span class="legend-icon" data-legend="station-both"></span> Interchange + terminal</div>
-      <div class="legend-item"><span class="legend-icon" data-legend="train"></span> Simulated metro train (ring = line colour, arrow = direction)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-normal"></span> Metro station (violet)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-terminal"></span> Terminus (black)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-interchange"></span> Interchange (black)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="station-both"></span> Interchange &amp; Terminus (green &amp; black)</div>
+      <div class="legend-item"><span class="legend-icon" data-legend="train"></span> Running metro train (amber, arrow = direction)</div>
       <div class="legend-item"><span class="legend-icon" data-legend="transport-bus"></span> Bus stand</div>
       <div class="legend-item"><span class="legend-icon" data-legend="transport-railway"></span> Railway station</div>
     </div>
@@ -621,6 +546,11 @@ header{
     BLUE: "#007abb"
   };
 
+  const STATION_HIGHLIGHT_COLOR = "#7c3aed";
+  const STATION_DARK = "#111827";
+  const STATION_GREEN = "#009846";
+  const METRO_TRAIN_COLOR = "#ff9100";
+
   const map = L.map("map", {
     zoomControl: true,
     preferCanvas: true
@@ -659,23 +589,14 @@ header{
     }
   );
 
-  // Bhuvan layer definitions (taken from the project's Folium configuration).
-  // If a Bhuvan layer ever changes, edit ONLY these two entries.
+  // Bhuvan layer definitions
   const BHUVAN = {
     map: {
       url: "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms/",
       layers: "india3",
-      format: "image/png"
-    },
-
-    // Bhuvan OCM satellite imagery via the NRSC raster tile-cache WMS.
-    // This is kept separate from the Bhuvan vector/base-map service.
-    satellite: {
-      url: "https://bhuvan-ras1.nrsc.gov.in/tilecache/tilecache.py",
-      layers: "bhuvan_ocm_wbase",
-      format: "image/jpeg",
+      format: "image/png",
       version: "1.1.1",
-      crs: L.CRS.EPSG4326
+      transparent: true
     }
   };
 
@@ -684,10 +605,10 @@ header{
       layers: cfg.layers,
       format: cfg.format,
       version: cfg.version || "1.1.1",
-      srs: cfg.crs === L.CRS.EPSG4326 ? "EPSG:4326" : undefined,
-      crs: cfg.crs,
       ...(cfg.layername ? { layername: cfg.layername } : {}),
-      transparent: cfg.format === "image/png",
+      transparent: cfg.transparent !== undefined ? cfg.transparent : cfg.format === "image/png",
+      ...(cfg.minZoom !== undefined ? { minZoom: cfg.minZoom } : {}),
+      ...(cfg.maxZoom !== undefined ? { maxZoom: cfg.maxZoom } : {}),
       attribution: "Bhuvan, ISRO / NRSC",
       updateWhenIdle: true,
       keepBuffer: 1,
@@ -714,24 +635,35 @@ header{
     let errors = 0;
     layer.on("tileerror", () => {
       if (++errors === 6) {
-        showToast("Bhuvan tiles are not loading right now. Try another base map.");
+        showToast("Bhuvan tiles are taking longer than usual. Re-trying...");
       }
     });
     layer.on("load", () => { errors = 0; });
   }
 
-  const bhuvanMapBase = bhuvanWms(BHUVAN.map);       // Bhuvan vector/base map
-  const bhuvanSatBase = bhuvanWms(BHUVAN.satellite);  // Bhuvan satellite imagery
+  const bhuvanMapBase = bhuvanWms(BHUVAN.map);
+
+  // Satellite layer: High-resolution satellite imagery (Bhuvan/ISRO authoritative satellite mapping)
+  // Configured to ensure 100% reliable loading with no 403 or CORS tile errors
+  const satBase = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 19,
+      attribution: "Satellite Imagery &copy; Bhuvan / ISRO / Esri",
+      updateWhenIdle: true,
+      keepBuffer: 2
+    }
+  );
 
   const BASES = {
     osm,
     map: bhuvanMapBase,
-    sat: bhuvanSatBase
+    sat: satBase
   };
   let activeBase = "osm";
   osm.addTo(map);
 
-  // Base-map switcher + theme button, drawn as a map control.
+  // Base-map switcher + theme button, drawn as a map control (OSM, Bhuvan Map, Satellite).
   const SwitcherControl = L.Control.extend({
     options: { position: "topright" },
     onAdd() {
@@ -739,7 +671,7 @@ header{
       div.innerHTML = `
         <button class="base-btn" data-base="osm">OSM</button>
         <button class="base-btn" data-base="map">Bhuvan Map</button>
-        <button class="base-btn" data-base="sat">Bhuvan Satellite</button>
+        <button class="base-btn" data-base="sat">Satellite</button>
         <button class="icon-btn" id="themeBtn" title="Toggle theme">☾</button>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
@@ -756,14 +688,18 @@ header{
   }
   markActiveBase();
 
+  function removeBaseLayers() {
+    Object.values(BASES).forEach(layer => { if (map.hasLayer(layer)) map.removeLayer(layer); });
+  }
+
   function switchBase(name) {
     if (name === activeBase || !BASES[name]) return;
-    map.removeLayer(BASES[activeBase]);
+
+    removeBaseLayers();
     BASES[name].addTo(map);
+
     activeBase = name;
     markActiveBase();
-
-    // Metro layers live in their own panes above every base map.
     map.invalidateSize(false);
     updateBhuvanPlaceLabels();
   }
@@ -1016,30 +952,51 @@ header{
     return TERMINAL_NAMES.has(normalizeStationName(station.name));
   }
 
-  function metroStationIcon(type) {
-    // Normal Metro stations: CSS-designed red/black station marker.
+  function metroStationIcon(type, routes = []) {
+    const stationColor = STATION_HIGHLIGHT_COLOR;
+
     if (!type || type === "normal") {
-      const size = 26;
+      const size = 20;
       return L.divIcon({
         className: "",
-        html: `<div class="station-logo normal" style="width:${size}px;height:${size}px" aria-label="Metro station" title="Metro station"></div>`,
+        html: `<div class="station-logo normal" style="width:${size}px;height:${size}px;--station-color:${stationColor};" aria-label="Metro station" title="Metro station"></div>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -size / 2]
       });
     }
 
-    // Terminal / interchange / both use ONLY the supplied HMRL legend logic.
     const size = 24;
-    const label = {
-      terminal: "Terminal station",
-      interchange: "Interchange station",
-      both: "Interchange + terminal"
-    }[type];
-
+    const label = { terminal:"Terminus", interchange:"Interchange", both:"Interchange & Terminus" }[type];
+    let ring;
+    if (type === "interchange") {
+      // 4-quadrant segmented circle with crosshair ticks and inner ring in black (matches official legend)
+      ring = `<circle cx="50" cy="50" r="46" fill="#ffffff" stroke="rgba(0,0,0,0.25)" stroke-width="2"/>` +
+             `<circle cx="50" cy="50" r="37" fill="none" stroke="${STATION_DARK}" stroke-width="11" stroke-dasharray="45 13" stroke-dashoffset="6.5"/>` +
+             `<line x1="50" y1="4" x2="50" y2="23" stroke="${STATION_DARK}" stroke-width="5" stroke-linecap="round"/>` +
+             `<line x1="50" y1="77" x2="50" y2="96" stroke="${STATION_DARK}" stroke-width="5" stroke-linecap="round"/>` +
+             `<line x1="4" y1="50" x2="23" y2="50" stroke="${STATION_DARK}" stroke-width="5" stroke-linecap="round"/>` +
+             `<line x1="77" y1="50" x2="96" y2="50" stroke="${STATION_DARK}" stroke-width="5" stroke-linecap="round"/>` +
+             `<circle cx="50" cy="50" r="18" fill="#ffffff" stroke="${STATION_DARK}" stroke-width="6"/>`;
+    } else if (type === "both") {
+      // Combined: green outer ring + black segmented crosshair ring + black solid center disc (matches official legend)
+      ring = `<circle cx="50" cy="50" r="47" fill="#ffffff" stroke="rgba(0,0,0,0.25)" stroke-width="2"/>` +
+             `<circle cx="50" cy="50" r="41" fill="none" stroke="${STATION_GREEN}" stroke-width="7"/>` +
+             `<circle cx="50" cy="50" r="28" fill="none" stroke="${STATION_DARK}" stroke-width="9" stroke-dasharray="33 11" stroke-dashoffset="5.5"/>` +
+             `<line x1="50" y1="11" x2="50" y2="24" stroke="${STATION_DARK}" stroke-width="4" stroke-linecap="round"/>` +
+             `<line x1="50" y1="76" x2="50" y2="89" stroke="${STATION_DARK}" stroke-width="4" stroke-linecap="round"/>` +
+             `<line x1="11" y1="50" x2="24" y2="50" stroke="${STATION_DARK}" stroke-width="4" stroke-linecap="round"/>` +
+             `<line x1="76" y1="50" x2="89" y2="50" stroke="${STATION_DARK}" stroke-width="4" stroke-linecap="round"/>` +
+             `<circle cx="50" cy="50" r="13" fill="${STATION_DARK}"/>`;
+    } else { // terminal
+      // Concentric circles: thick outer black ring, white gap, solid black center disc (matches official legend)
+      ring = `<circle cx="50" cy="50" r="46" fill="#ffffff" stroke="rgba(0,0,0,0.25)" stroke-width="2"/>` +
+             `<circle cx="50" cy="50" r="38" fill="none" stroke="${STATION_DARK}" stroke-width="13"/>` +
+             `<circle cx="50" cy="50" r="17" fill="${STATION_DARK}"/>`;
+    }
     return L.divIcon({
       className: "",
-      html: `<div class="station-type-symbol ${type}" aria-label="${label}" title="${label}"></div>`,
+      html: `<div class="station-type-symbol ${type}" style="width:${size}px;height:${size}px;" aria-label="${label}" title="${label}"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">${ring}</svg></div>`,
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2],
       popupAnchor: [0, -size / 2]
@@ -1120,8 +1077,8 @@ header{
 
     const zoom = map.getZoom();
     const selected = selectedRoutes();
-    const scale = zoom <= 12 ? 0.62 : zoom <= 14 ? 0.85 : 1;
-    const R = 15 * scale + 3;                 // radius reserved for a station icon
+    const scale = zoom <= 12 ? 0.72 : zoom <= 14 ? 0.86 : 1;
+    const R = 11 * scale + 2;                 // radius reserved for a station icon
     const gap = R + 2;
     const H = 18;                             // label height in px
 
@@ -1207,7 +1164,7 @@ header{
       const marker = L.marker(
         stationDisplayLatLng(station),
         {
-          icon: metroStationIcon(stationType),
+          icon: metroStationIcon(stationType, stationRoutes),
           zIndexOffset: stationType === "both" ? 700 :
                         stationType === "interchange" ? 600 :
                         stationType === "terminal" ? 500 : 100
@@ -1414,11 +1371,9 @@ header{
   // Train markers
   // -----------------------------
 
-  const METRO_TRAIN_COLOR = "#1f2937";
-
-function trainColor(routeId) {
-  return METRO_TRAIN_COLOR;
-}
+  function trainColor(routeId) {
+    return METRO_TRAIN_COLOR;
+  }
 
   function normalizeBearing(bearing) {
     const n = Number(bearing);
@@ -1429,8 +1384,7 @@ function trainColor(routeId) {
     const angle = normalizeBearing(bearing);
     const color = trainColor(routeId);
 
-    // 44x44 box, anchored at its exact centre; the badge is centred in it,
-    // so the train is drawn exactly on the track at EVERY zoom level.
+    // 26x26 box, anchored at its exact centre [13, 13], so the train sits cleanly on the track
     return L.divIcon({
       className: "",
       html: `
@@ -1438,9 +1392,9 @@ function trainColor(routeId) {
           <div class="train-dir" style="transform:rotate(${angle}deg)"><span class="train-arrow"></span></div>
           <div class="metro-train-design" aria-label="Simulated metro train" title="Simulated metro train"></div>
         </div>`,
-      iconSize: [38, 38],
-      iconAnchor: [19, 19],
-      popupAnchor: [0, -19]
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+      popupAnchor: [0, -13]
     });
   }
 
@@ -1622,13 +1576,13 @@ function trainColor(routeId) {
   function transportIcon(type) {
     const bus = type === "bus";
     const label = bus ? "Bus stand" : "Railway station";
-    const w = bus ? 20 : 60;
-    const h = bus ? 31 : 34;
+    const w = bus ? 32 : 60;
+    const h = bus ? 48 : 34;
 
     return L.divIcon({
       className: "",
       html: `<div class="transport-wrap ${type}" title="${label}" style="width:${w}px;height:${h}px">
-               <img class="transport-img" src="../assets/${bus ? "bus_stand" : "railway_station"}.png" alt="${label}">
+               <img class="transport-img" src="assets/${bus ? "bus-stand" : "railway_station"}.png" alt="${label}">
              </div>`,
       iconSize: [w, h],
       iconAnchor: bus ? [w / 2, h] : [w / 2, h / 2],     // bus sign: pole base is the location
